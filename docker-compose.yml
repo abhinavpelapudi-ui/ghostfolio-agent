@@ -1,0 +1,76 @@
+name: ghostfolio-agent
+
+services:
+  gf-postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ghostfolio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ghostfolio}
+      POSTGRES_DB: ${POSTGRES_DB:-ghostfolio}
+    volumes:
+      - gf_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ghostfolio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gf-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-ghostfolio-redis}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --pass ${REDIS_PASSWORD:-ghostfolio-redis} ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ghostfolio:
+    image: ghostfolio/ghostfolio:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3333:3333"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ghostfolio}:${POSTGRES_PASSWORD:-ghostfolio}@gf-postgres:5432/${POSTGRES_DB:-ghostfolio}
+      REDIS_HOST: gf-redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ghostfolio-redis}
+      ACCESS_TOKEN_SALT: ${ACCESS_TOKEN_SALT:-change-this-to-a-random-64-char-hex-string}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-to-a-random-base64-string}
+      NODE_ENV: production
+    depends_on:
+      gf-postgres:
+        condition: service_healthy
+      gf-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3333/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - GHOSTFOLIO_URL=http://ghostfolio:3333
+      - GHOSTFOLIO_ACCESS_TOKEN=${GHOSTFOLIO_ACCESS_TOKEN}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY:-}
+      - LANGCHAIN_TRACING_V2=true
+      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-ghostfolio-agent}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+    depends_on:
+      ghostfolio:
+        condition: service_healthy
+
+volumes:
+  gf_pgdata:
