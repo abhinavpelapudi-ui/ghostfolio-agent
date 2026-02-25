@@ -4,7 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.clients.ghostfolio import ghostfolio_client
+from app.clients.ghostfolio import get_client
 
 
 @tool
@@ -22,7 +22,7 @@ async def transactions(
         params["assetClasses"] = asset_class
 
     try:
-        orders_data = await ghostfolio_client.get_orders(**params)
+        orders_data = await get_client().get_orders(**params)
         activities = orders_data if isinstance(orders_data, list) else orders_data.get("activities", [])
 
         if symbol:

@@ -38,6 +38,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-ghostfolio-redis}
       ACCESS_TOKEN_SALT: ${ACCESS_TOKEN_SALT:-change-this-to-a-random-64-char-hex-string}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-to-a-random-base64-string}
+      ENABLE_FEATURE_REGISTRATION: "true"
       NODE_ENV: production
     depends_on:
       gf-postgres:

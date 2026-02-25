@@ -4,7 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.clients.ghostfolio import ghostfolio_client
+from app.clients.ghostfolio import get_client
 
 
 @tool
@@ -17,7 +17,7 @@ async def holding_detail(symbol: str, data_source: str = "YAHOO") -> str:
     dividends, and sector information.
     Use when user asks about a specific stock or ETF they hold."""
     try:
-        detail = await ghostfolio_client.get_holding_detail(data_source, symbol.upper())
+        detail = await get_client().get_holding_detail(data_source, symbol.upper())
         result = {
             "symbol": symbol.upper(),
             "data_source": data_source,

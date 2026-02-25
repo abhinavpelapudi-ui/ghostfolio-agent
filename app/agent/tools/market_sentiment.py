@@ -4,7 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.clients.ghostfolio import ghostfolio_client
+from app.clients.ghostfolio import get_client
 
 
 @tool
@@ -14,7 +14,7 @@ async def market_sentiment() -> str:
     and flags potential risks like over-concentration.
     Use when user asks about risk, diversification, or portfolio health."""
     try:
-        details = await ghostfolio_client.get_portfolio_details()
+        details = await get_client().get_portfolio_details()
         holdings_raw = details.get("holdings", {})
 
         # holdings is a dict keyed by symbol, convert to list

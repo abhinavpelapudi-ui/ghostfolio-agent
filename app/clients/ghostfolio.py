@@ -1,6 +1,9 @@
 """Async HTTP client for the Ghostfolio REST API."""
 
 import logging
+import secrets
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 import httpx
 
@@ -8,11 +11,32 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# ── Per-request client via contextvars ────────────────────────────────
+_current_client: ContextVar["GhostfolioClient | None"] = ContextVar(
+    "ghostfolio_client", default=None
+)
+
+
+def get_client() -> "GhostfolioClient":
+    """Return the current per-request client, or fall back to the default singleton."""
+    client = _current_client.get()
+    return client if client is not None else _default_client
+
+
+@contextmanager
+def use_client(client: "GhostfolioClient"):
+    """Context manager to set the active GhostfolioClient for the current async context."""
+    token = _current_client.set(client)
+    try:
+        yield client
+    finally:
+        _current_client.reset(token)
+
 
 class GhostfolioClient:
-    def __init__(self) -> None:
-        self._base_url = settings.ghostfolio_url.rstrip("/")
-        self._access_token = settings.ghostfolio_access_token
+    def __init__(self, access_token: str | None = None, base_url: str | None = None) -> None:
+        self._base_url = (base_url or settings.ghostfolio_url).rstrip("/")
+        self._access_token = access_token or settings.ghostfolio_access_token
         self._bearer_token: str | None = None
         self._client = httpx.AsyncClient(timeout=30.0)
 
@@ -95,4 +119,30 @@ class GhostfolioClient:
         await self._client.aclose()
 
 
-ghostfolio_client = GhostfolioClient()
+# ── Default singleton (used by FastAPI routes and health checks) ────
+_default_client = GhostfolioClient()
+ghostfolio_client = _default_client
+
+
+async def create_anonymous_user(base_url: str | None = None) -> dict:
+    """Create a new anonymous user on the Ghostfolio instance.
+
+    Returns dict with 'access_token' and 'auth_token' for the new user.
+    Requires ENABLE_FEATURE_REGISTRATION=true on the Ghostfolio instance.
+    """
+    url = (base_url or settings.ghostfolio_url).rstrip("/")
+    new_token = secrets.token_hex(32)
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            f"{url}/api/v1/auth/anonymous",
+            json={"accessToken": new_token},
+        )
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            return {
+                "access_token": new_token,
+                "auth_token": data.get("authToken", ""),
+            }
+        raise RuntimeError(
+            f"Failed to create Ghostfolio user: {resp.status_code} {resp.text}"
+        )

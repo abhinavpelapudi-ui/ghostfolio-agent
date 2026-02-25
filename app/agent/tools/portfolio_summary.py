@@ -4,7 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.clients.ghostfolio import ghostfolio_client
+from app.clients.ghostfolio import get_client
 
 
 @tool
@@ -13,7 +13,7 @@ async def portfolio_summary() -> str:
     top holdings, and account breakdown. Use this when the user asks about their portfolio overview,
     total value, what they own, or asset allocation."""
     try:
-        details = await ghostfolio_client.get_portfolio_details()
+        details = await get_client().get_portfolio_details()
         summary = details.get("summary", {})
         holdings_raw = details.get("holdings", {})
 

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from langchain_core.tools import tool
 
-from app.clients.ghostfolio import ghostfolio_client
+from app.clients.ghostfolio import get_client
 
 
 @tool
@@ -50,7 +50,7 @@ async def add_trade(
             trade_date = f"{date}T00:00:00.000Z"
 
         # Get the user's first account
-        accounts_data = await ghostfolio_client.get_accounts()
+        accounts_data = await get_client().get_accounts()
         accounts = accounts_data.get("accounts", [])
         if not accounts:
             return json.dumps({"error": "No accounts found. Please create an account in Ghostfolio first."})
@@ -68,7 +68,7 @@ async def add_trade(
             "unitPrice": unit_price,
         }
 
-        result = await ghostfolio_client.create_order(order)
+        result = await get_client().create_order(order)
 
         total_cost = quantity * unit_price + fee
         return json.dumps({

@@ -13,6 +13,7 @@ from langgraph.prebuilt import create_react_agent
 from app.agent.models import DEFAULT_MODEL_ID, ModelSpec, get_model_spec
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.tools import ALL_TOOLS
+from app.clients.ghostfolio import GhostfolioClient, _default_client, use_client
 from app.config import settings
 from app.tracing.cost_tracker import cost_tracker
 from app.tracing.setup import get_langfuse_handler
@@ -48,7 +49,11 @@ def get_agent(model_id: str = DEFAULT_MODEL_ID):
     return agent
 
 
-async def run_agent(command: str, model_id: str = DEFAULT_MODEL_ID) -> dict:
+async def run_agent(
+    command: str,
+    model_id: str = DEFAULT_MODEL_ID,
+    ghostfolio_client: GhostfolioClient | None = None,
+) -> dict:
     trace_id = str(uuid.uuid4())
     spec = get_model_spec(model_id)
     agent = get_agent(model_id)
@@ -62,22 +67,24 @@ async def run_agent(command: str, model_id: str = DEFAULT_MODEL_ID) -> dict:
     if callbacks:
         config["callbacks"] = callbacks
 
-    try:
-        result = await agent.ainvoke(
-            {"messages": [HumanMessage(content=command)]},
-            config=config,
-        )
-    except Exception as e:
-        logger.error("Agent execution failed: %s", e)
-        return {
-            "response": "Sorry, I encountered an error processing your request. Please try again.",
-            "trace_id": trace_id,
-            "tools_called": [],
-            "cost_usd": 0,
-            "model": spec.api_model_name,
-            "error": str(e),
-            "verification": {},
-        }
+    client_to_use = ghostfolio_client or _default_client
+    with use_client(client_to_use):
+        try:
+            result = await agent.ainvoke(
+                {"messages": [HumanMessage(content=command)]},
+                config=config,
+            )
+        except Exception as e:
+            logger.error("Agent execution failed: %s", e)
+            return {
+                "response": "Sorry, I encountered an error processing your request. Please try again.",
+                "trace_id": trace_id,
+                "tools_called": [],
+                "cost_usd": 0,
+                "model": spec.api_model_name,
+                "error": str(e),
+                "verification": {},
+            }
 
     messages = result.get("messages", [])
     final_message = ""

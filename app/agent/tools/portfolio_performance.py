@@ -4,7 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.clients.ghostfolio import ghostfolio_client
+from app.clients.ghostfolio import get_client
 
 VALID_RANGES = {"1d", "1w", "1m", "3m", "6m", "ytd", "1y", "3y", "5y", "max"}
 
@@ -19,7 +19,7 @@ async def portfolio_performance(date_range: str = "max") -> str:
         date_range = "max"
 
     try:
-        data = await ghostfolio_client.get_portfolio_performance(date_range=date_range)
+        data = await get_client().get_portfolio_performance(date_range=date_range)
         perf = data.get("performance", {})
         chart = data.get("chart", [])
 

@@ -4,7 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.clients.ghostfolio import ghostfolio_client
+from app.clients.ghostfolio import get_client
 
 
 @tool
@@ -13,7 +13,7 @@ async def dividend_history(symbol: str, data_source: str = "YAHOO") -> str:
     Returns chronological list of dividend payments with amounts and dates.
     Use when user asks about dividends received from a stock or ETF."""
     try:
-        data = await ghostfolio_client.get_dividends(data_source, symbol.upper())
+        data = await get_client().get_dividends(data_source, symbol.upper())
         dividends = data if isinstance(data, list) else data.get("dividends", [])
 
         total = sum(d.get("amount", 0) for d in dividends)

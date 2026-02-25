@@ -2,14 +2,12 @@
 
 import pytest
 
-from app.clients.ghostfolio import GhostfolioClient
+from app.clients.ghostfolio import GhostfolioClient, _default_client, get_client, use_client
 
 
 @pytest.fixture
 async def client(mock_ghostfolio):
-    c = GhostfolioClient()
-    c._base_url = "http://localhost:3333"
-    c._access_token = "test-token"
+    c = GhostfolioClient(access_token="test-token", base_url="http://localhost:3333")
     yield c
     await c.close()
 
@@ -69,3 +67,27 @@ async def test_create_order(client):
     }
     result = await client.create_order(order)
     assert result["id"] == "order-new-1"
+
+
+# ── Context var tests ────────────────────────────────────────────────
+
+def test_get_client_returns_default():
+    """When no context var is set, get_client() returns the default singleton."""
+    assert get_client() is _default_client
+
+
+async def test_use_client_overrides(mock_ghostfolio):
+    """use_client() context manager sets and resets the active client."""
+    custom = GhostfolioClient(access_token="custom-token", base_url="http://localhost:3333")
+    with use_client(custom):
+        assert get_client() is custom
+    # After context manager exits, should revert to default
+    assert get_client() is _default_client
+    await custom.close()
+
+
+def test_parametrized_constructor():
+    """GhostfolioClient accepts explicit access_token and base_url."""
+    c = GhostfolioClient(access_token="my-token", base_url="http://example.com:3333/")
+    assert c._access_token == "my-token"
+    assert c._base_url == "http://example.com:3333"

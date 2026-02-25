@@ -1,18 +1,28 @@
 """Chainlit chat UI for the Ghostfolio Finance AI Agent."""
 
-import httpx
+import logging
+
 import chainlit as cl
+import httpx
 from chainlit.input_widget import Select
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.agent import get_agent
 from app.agent.models import DEFAULT_MODEL_ID, SUPPORTED_MODELS, get_model_spec
+from app.clients.ghostfolio import (
+    GhostfolioClient,
+    _default_client,
+    create_anonymous_user,
+    use_client,
+)
 from app.config import settings
 from app.tracing.cost_tracker import cost_tracker
 from app.tracing.setup import get_langfuse_handler, init_tracing
 from app.verification.disclaimer_injection import inject_disclaimer
 from app.verification.hallucination_detection import check_hallucination
 from app.verification.numerical_consistency import check_numerical_consistency
+
+logger = logging.getLogger(__name__)
 
 # Initialize tracing on module load
 init_tracing()
@@ -68,13 +78,38 @@ async def auth_callback(username: str, password: str):
 
     Username: any display name
     Password: Ghostfolio access token (Security Token)
+            Enter 'new' to create a new Ghostfolio account.
     """
+    # New user registration flow
+    if password.strip().lower() in ("new", "register", "create"):
+        try:
+            result = await create_anonymous_user()
+            new_token = result["access_token"]
+            user_info = await _validate_ghostfolio_token(new_token)
+            if user_info:
+                return cl.User(
+                    identifier=username or f"user-{user_info['id'][:8]}",
+                    metadata={
+                        "ghostfolio_user_id": user_info["id"],
+                        "ghostfolio_access_token": new_token,
+                        "role": user_info["role"],
+                        "currency": user_info["currency"],
+                        "accounts": user_info["accounts"],
+                        "newly_created": True,
+                    },
+                )
+        except Exception as e:
+            logger.error("Failed to create new Ghostfolio user: %s", e)
+            return None
+
+    # Existing user login flow
     user_info = await _validate_ghostfolio_token(password)
     if user_info:
         return cl.User(
             identifier=username or f"user-{user_info['id'][:8]}",
             metadata={
                 "ghostfolio_user_id": user_info["id"],
+                "ghostfolio_access_token": password,
                 "role": user_info["role"],
                 "currency": user_info["currency"],
                 "accounts": user_info["accounts"],
@@ -104,7 +139,7 @@ def _available_models() -> list[dict]:
 
 @cl.on_chat_start
 async def on_start():
-    """Initialize the chat session with model selector."""
+    """Initialize the chat session with model selector and per-user Ghostfolio client."""
     cl.user_session.set("message_history", [])
     cl.user_session.set("model_id", DEFAULT_MODEL_ID)
 
@@ -113,6 +148,12 @@ async def on_start():
     user_name = user.identifier if user else "User"
     user_currency = user.metadata.get("currency", "USD") if user else "USD"
     user_accounts = user.metadata.get("accounts", []) if user else []
+
+    # Create per-user Ghostfolio client
+    access_token = user.metadata.get("ghostfolio_access_token") if user else None
+    if access_token:
+        user_client = GhostfolioClient(access_token=access_token)
+        cl.user_session.set("ghostfolio_client", user_client)
 
     # Build model selector options
     models = _available_models()
@@ -133,6 +174,20 @@ async def on_start():
         ),
     ])
     await chat_settings.send()
+
+    # Show token for newly created users
+    if user and user.metadata.get("newly_created"):
+        token = user.metadata.get("ghostfolio_access_token", "")
+        await cl.Message(
+            content=(
+                f"**Your new Ghostfolio account has been created!** 🎉\n\n"
+                f"**Save your access token** (you will need it to log in again):\n\n"
+                f"```\n{token}\n```\n\n"
+                "You can start by adding your first trade, e.g.:\n"
+                '- *"I bought 10 shares of AAPL at $230"*\n'
+                '- *"Add a purchase: 5 VOO at $520"*'
+            )
+        ).send()
 
     # Personalized welcome
     accounts_str = ", ".join(user_accounts) if user_accounts else "No accounts"
@@ -173,7 +228,7 @@ async def on_settings_update(settings_update):
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    """Handle incoming chat messages."""
+    """Handle incoming chat messages with per-user Ghostfolio client."""
     model_id = cl.user_session.get("model_id", DEFAULT_MODEL_ID)
     history = cl.user_session.get("message_history", [])
 
@@ -200,59 +255,74 @@ async def on_message(message: cl.Message):
     tool_outputs = []
     tools_called = []
 
-    try:
-        result = await agent.ainvoke(
-            {"messages": history},
-            config=config,
-        )
+    # Use per-user Ghostfolio client (falls back to default if none)
+    user_client = cl.user_session.get("ghostfolio_client", _default_client)
 
-        messages = result.get("messages", [])
-        final_message = ""
-        total_input = 0
-        total_output = 0
+    with use_client(user_client):
+        try:
+            result = await agent.ainvoke(
+                {"messages": history},
+                config=config,
+            )
 
-        for msg in messages:
-            if hasattr(msg, "type") and msg.type == "tool":
-                tools_called.append(msg.name)
-                tool_outputs.append(msg.content)
+            messages = result.get("messages", [])
+            final_message = ""
+            total_input = 0
+            total_output = 0
 
-            if hasattr(msg, "type") and msg.type == "ai" and isinstance(msg.content, str) and msg.content:
-                final_message = msg.content
+            for msg in messages:
+                if hasattr(msg, "type") and msg.type == "tool":
+                    tools_called.append(msg.name)
+                    tool_outputs.append(msg.content)
 
-            if hasattr(msg, "response_metadata"):
-                usage = msg.response_metadata.get("usage", {})
-                total_input += usage.get("input_tokens", usage.get("prompt_tokens", 0))
-                total_output += usage.get("output_tokens", usage.get("completion_tokens", 0))
+                if hasattr(msg, "type") and msg.type == "ai" and isinstance(msg.content, str) and msg.content:
+                    final_message = msg.content
 
-        # Verification pipeline
-        check_numerical_consistency(final_message, tool_outputs)
-        check_hallucination(final_message, tool_outputs)
-        final_message = inject_disclaimer(final_message)
+                if hasattr(msg, "response_metadata"):
+                    usage = msg.response_metadata.get("usage", {})
+                    total_input += usage.get("input_tokens", usage.get("prompt_tokens", 0))
+                    total_output += usage.get("output_tokens", usage.get("completion_tokens", 0))
 
-        # Track cost
-        spec = get_model_spec(model_id)
-        cost_tracker.record(
-            model=spec.api_model_name,
-            input_tokens=total_input,
-            output_tokens=total_output,
-            trace_id="chainlit",
-            operation="chat",
-        )
+            # Verification pipeline
+            check_numerical_consistency(final_message, tool_outputs)
+            check_hallucination(final_message, tool_outputs)
+            final_message = inject_disclaimer(final_message)
 
-        # Show tool calls as expandable steps
-        if tools_called:
-            for i, tool_name in enumerate(tools_called):
-                icon = TOOL_ICONS.get(tool_name, "🔧")
-                tool_data = tool_outputs[i] if i < len(tool_outputs) else ""
-                async with cl.Step(name=f"{icon} {tool_name}", type="tool") as step:
-                    step.output = tool_data[:500] if tool_data else "OK"
+            # Track cost
+            spec = get_model_spec(model_id)
+            cost_tracker.record(
+                model=spec.api_model_name,
+                input_tokens=total_input,
+                output_tokens=total_output,
+                trace_id="chainlit",
+                operation="chat",
+            )
 
-        thinking_msg.content = final_message
-        await thinking_msg.update()
+            # Show tool calls as expandable steps
+            if tools_called:
+                for i, tool_name in enumerate(tools_called):
+                    icon = TOOL_ICONS.get(tool_name, "🔧")
+                    tool_data = tool_outputs[i] if i < len(tool_outputs) else ""
+                    async with cl.Step(name=f"{icon} {tool_name}", type="tool") as step:
+                        step.output = tool_data[:500] if tool_data else "OK"
 
-        history.append(AIMessage(content=final_message))
-        cl.user_session.set("message_history", history)
+            thinking_msg.content = final_message
+            await thinking_msg.update()
 
-    except Exception as e:
-        thinking_msg.content = f"Sorry, I encountered an error: {str(e)}\n\nPlease check that an LLM API key is configured."
-        await thinking_msg.update()
+            history.append(AIMessage(content=final_message))
+            cl.user_session.set("message_history", history)
+
+        except Exception as e:
+            thinking_msg.content = (
+                f"Sorry, I encountered an error: {str(e)}\n\n"
+                "Please check that an LLM API key is configured."
+            )
+            await thinking_msg.update()
+
+
+@cl.on_chat_end
+async def on_end():
+    """Clean up per-user Ghostfolio client on session end."""
+    client = cl.user_session.get("ghostfolio_client")
+    if client and client is not _default_client:
+        await client.close()

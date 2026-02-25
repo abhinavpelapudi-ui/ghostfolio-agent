@@ -4,7 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.clients.ghostfolio import ghostfolio_client
+from app.clients.ghostfolio import get_client
 
 
 @tool
@@ -14,7 +14,7 @@ async def symbol_search(query: str) -> str:
     Use when user mentions a company name and you need to resolve the ticker symbol,
     or when they want to look up a specific investment."""
     try:
-        data = await ghostfolio_client.lookup_symbol(query)
+        data = await get_client().lookup_symbol(query)
         items = data.get("items", [])
 
         result = {
