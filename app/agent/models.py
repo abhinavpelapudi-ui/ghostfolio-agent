@@ -36,10 +36,16 @@ SUPPORTED_MODELS: dict[str, ModelSpec] = {
         display_name="GPT-4o (OpenAI)",
         api_model_name="gpt-4o",
     ),
-    "claude-haiku": ModelSpec(
-        model_id="claude-haiku",
+    "claude-sonnet-4-6": ModelSpec(
+        model_id="claude-sonnet-4-6",
         provider="anthropic",
-        display_name="Claude Haiku (Anthropic)",
+        display_name="Claude Sonnet 4.6 (Anthropic)",
+        api_model_name="claude-sonnet-4-6",
+    ),
+    "claude-haiku-4-5": ModelSpec(
+        model_id="claude-haiku-4-5",
+        provider="anthropic",
+        display_name="Claude Haiku 4.5 (Anthropic)",
         api_model_name="claude-haiku-4-5-20251001",
     ),
 }
