@@ -132,11 +132,20 @@ async def create_anonymous_user(base_url: str | None = None) -> dict:
     """
     url = (base_url or settings.ghostfolio_url).rstrip("/")
     new_token = secrets.token_hex(32)
+    logger.info("Creating anonymous user at %s/api/v1/auth/anonymous", url)
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(
-            f"{url}/api/v1/auth/anonymous",
-            json={"accessToken": new_token},
-        )
+        try:
+            resp = await client.post(
+                f"{url}/api/v1/auth/anonymous",
+                json={"accessToken": new_token},
+            )
+        except httpx.ConnectError as e:
+            logger.error("Cannot connect to Ghostfolio at %s: %s", url, e)
+            raise RuntimeError(
+                f"Cannot connect to Ghostfolio at {url}. "
+                "Check GHOSTFOLIO_URL env variable."
+            ) from e
+        logger.info("Ghostfolio response: status=%s", resp.status_code)
         if resp.status_code in (200, 201):
             data = resp.json()
             return {
@@ -144,5 +153,6 @@ async def create_anonymous_user(base_url: str | None = None) -> dict:
                 "auth_token": data.get("authToken", ""),
             }
         raise RuntimeError(
-            f"Failed to create Ghostfolio user: {resp.status_code} {resp.text}"
+            f"Failed to create Ghostfolio user: {resp.status_code} {resp.text}. "
+            f"URL: {url}. Ensure ENABLE_FEATURE_REGISTRATION=true on Ghostfolio."
         )

@@ -3,7 +3,6 @@
 import logging
 
 import chainlit as cl
-import httpx
 from chainlit.input_widget import Select
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -39,47 +38,6 @@ TOOL_ICONS = {
 }
 
 
-async def _validate_ghostfolio_token(access_token: str) -> dict | None:
-    """Validate a Ghostfolio access token and return user info."""
-    base_url = settings.ghostfolio_url.rstrip("/")
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(
-            f"{base_url}/api/v1/auth/anonymous",
-            json={"accessToken": access_token},
-        )
-        if resp.status_code != 200:
-            return None
-
-        auth_token = resp.json().get("authToken")
-        if not auth_token:
-            return None
-
-        user_resp = await client.get(
-            f"{base_url}/api/v1/user",
-            headers={"Authorization": f"Bearer {auth_token}"},
-        )
-        if user_resp.status_code != 200:
-            return None
-
-        user_data = user_resp.json()
-        return {
-            "id": user_data.get("id", "unknown"),
-            "role": (
-                "admin"
-                if "accessAdminControl"
-                in user_data.get("permissions", [])
-                else "user"
-            ),
-            "accounts": [
-                a.get("name", "")
-                for a in user_data.get("accounts", [])
-            ],
-            "currency": (
-                user_data.get("settings", {}).get("baseCurrency", "USD")
-            ),
-        }
-
-
 def _available_models() -> list[dict]:
     """Return models that have their API key configured."""
     available = []
@@ -102,81 +60,22 @@ def _available_models() -> list[dict]:
     return available
 
 
-@cl.password_auth_callback
-async def auth_callback(username: str, password: str):
-    """Login page.
-
-    Username = email address.
-    Password = 'generate' to create a new token,
-               or an existing Ghostfolio token.
-    """
-    email = username.strip()
-    if not email:
-        return None
-
-    token_input = password.strip().lower()
-
-    # "generate" → create a brand-new Ghostfolio account
-    if token_input in ("generate", "new", "create", "register"):
-        try:
-            result = await create_anonymous_user()
-            new_token = result["access_token"]
-            user_info = await _validate_ghostfolio_token(new_token)
-            if user_info:
-                return cl.User(
-                    identifier=email,
-                    metadata={
-                        "ghostfolio_access_token": new_token,
-                        "ghostfolio_user_id": user_info["id"],
-                        "currency": user_info["currency"],
-                        "accounts": user_info["accounts"],
-                        "newly_created": True,
-                    },
-                )
-        except Exception as e:
-            logger.error("Failed to create Ghostfolio user: %s", e)
-        return None
-
-    # Otherwise treat password as an existing token
-    user_info = await _validate_ghostfolio_token(password.strip())
-    if user_info:
-        return cl.User(
-            identifier=email,
-            metadata={
-                "ghostfolio_access_token": password.strip(),
-                "ghostfolio_user_id": user_info["id"],
-                "currency": user_info["currency"],
-                "accounts": user_info["accounts"],
-            },
-        )
-
-    return None
-
-
 @cl.on_chat_start
 async def on_start():
-    """Initialize session after login page."""
+    """Initialize session — no login, auto-generate a Ghostfolio user."""
     cl.user_session.set("message_history", [])
     cl.user_session.set("model_id", DEFAULT_MODEL_ID)
 
-    user = cl.user_session.get("user")
-    email = user.identifier if user else "User"
-    token = (
-        user.metadata.get("ghostfolio_access_token", "")
-        if user else ""
-    )
-    is_new = user and user.metadata.get("newly_created")
-    currency = (
-        user.metadata.get("currency", "USD") if user else "USD"
-    )
-    accounts = (
-        user.metadata.get("accounts", []) if user else []
-    )
-
-    # Per-user Ghostfolio client
-    if token:
+    # Try to create a new Ghostfolio user for this session
+    token = None
+    try:
+        result = await create_anonymous_user()
+        token = result["access_token"]
         user_client = GhostfolioClient(access_token=token)
         cl.user_session.set("ghostfolio_client", user_client)
+        logger.info("Created new Ghostfolio user for session")
+    except Exception as e:
+        logger.warning("Could not create Ghostfolio user: %s. Using default client.", e)
 
     # Model selector
     models = _available_models()
@@ -197,37 +96,29 @@ async def on_start():
     ])
     await chat_settings.send()
 
-    # Welcome message
     spec = get_model_spec(DEFAULT_MODEL_ID)
 
-    if is_new:
+    if token:
         await cl.Message(
             content=(
-                f"**Welcome, {email}!** 🎉\n\n"
-                "Your new Ghostfolio token "
-                "(save it for next login):\n\n"
-                f"```\n{token}\n```\n\n"
-                "Your portfolio is empty. "
-                "Add your first trade:\n"
+                "**Welcome to Ghostfolio AI Agent!** 🎉\n\n"
+                "Your portfolio is ready. Try:\n"
                 '- *"I bought 10 shares of AAPL at $230"*\n'
-                '- *"Add a purchase: 5 VOO at $520"*\n\n'
+                '- *"Show me my portfolio summary"*\n'
+                '- *"How has my portfolio performed?"*\n\n'
                 f"Model: **{spec.display_name}** — "
                 "change it in Settings"
             )
         ).send()
     else:
-        accounts_str = (
-            ", ".join(accounts) if accounts else "None yet"
-        )
         await cl.Message(
             content=(
-                f"**Welcome back, {email}!** 🏦\n\n"
-                f"Currency: **{currency}** | "
-                f"Accounts: **{accounts_str}**\n\n"
+                "**Welcome to Ghostfolio AI Agent!** 🏦\n\n"
+                "⚠️ Could not connect to Ghostfolio. "
+                "Using default account.\n\n"
                 "Try asking:\n"
-                "- *\"Show me my portfolio summary\"*\n"
-                "- *\"How has my portfolio performed?\"*\n"
-                "- *\"I bought 10 shares of AAPL at $230\"*\n\n"
+                '- *"Show me my portfolio summary"*\n'
+                '- *"How has my portfolio performed?"*\n\n'
                 f"Model: **{spec.display_name}** — "
                 "change it in Settings"
             )
