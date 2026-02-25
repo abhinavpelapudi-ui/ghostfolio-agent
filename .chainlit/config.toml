@@ -1,0 +1,13 @@
+[project]
+enable_telemetry = false
+
+[UI]
+name = "Ghostfolio AI Agent"
+description = "Enter your email and a Ghostfolio token.\nType **generate** as your token to create a new account."
+default_theme = "dark"
+
+[UI.theme.light]
+primary = "#1976D2"
+
+[UI.theme.dark]
+primary = "#90CAF9"

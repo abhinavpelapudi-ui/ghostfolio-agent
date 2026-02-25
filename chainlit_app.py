@@ -102,94 +102,83 @@ def _available_models() -> list[dict]:
     return available
 
 
+@cl.password_auth_callback
+async def auth_callback(username: str, password: str):
+    """Login page.
+
+    Username = email address.
+    Password = 'generate' to create a new token,
+               or an existing Ghostfolio token.
+    """
+    email = username.strip()
+    if not email:
+        return None
+
+    token_input = password.strip().lower()
+
+    # "generate" → create a brand-new Ghostfolio account
+    if token_input in ("generate", "new", "create", "register"):
+        try:
+            result = await create_anonymous_user()
+            new_token = result["access_token"]
+            user_info = await _validate_ghostfolio_token(new_token)
+            if user_info:
+                return cl.User(
+                    identifier=email,
+                    metadata={
+                        "ghostfolio_access_token": new_token,
+                        "ghostfolio_user_id": user_info["id"],
+                        "currency": user_info["currency"],
+                        "accounts": user_info["accounts"],
+                        "newly_created": True,
+                    },
+                )
+        except Exception as e:
+            logger.error("Failed to create Ghostfolio user: %s", e)
+        return None
+
+    # Otherwise treat password as an existing token
+    user_info = await _validate_ghostfolio_token(password.strip())
+    if user_info:
+        return cl.User(
+            identifier=email,
+            metadata={
+                "ghostfolio_access_token": password.strip(),
+                "ghostfolio_user_id": user_info["id"],
+                "currency": user_info["currency"],
+                "accounts": user_info["accounts"],
+            },
+        )
+
+    return None
+
+
 @cl.on_chat_start
 async def on_start():
-    """Two-step token auth, then initialize the chat session."""
+    """Initialize session after login page."""
     cl.user_session.set("message_history", [])
     cl.user_session.set("model_id", DEFAULT_MODEL_ID)
-    cl.user_session.set("authenticated", False)
 
-    # ── Step 1: Ask for email ────────────────────────────────────
-    await cl.Message(
-        content=(
-            "**Welcome to Ghostfolio AI Agent** 🏦\n\n"
-            "Enter your **email address** to get started."
-        )
-    ).send()
+    user = cl.user_session.get("user")
+    email = user.identifier if user else "User"
+    token = (
+        user.metadata.get("ghostfolio_access_token", "")
+        if user else ""
+    )
+    is_new = user and user.metadata.get("newly_created")
+    currency = (
+        user.metadata.get("currency", "USD") if user else "USD"
+    )
+    accounts = (
+        user.metadata.get("accounts", []) if user else []
+    )
 
-    email_res = await cl.AskUserMessage(
-        content="Your email:", timeout=300
-    ).send()
-    if not email_res:
-        return
+    # Per-user Ghostfolio client
+    if token:
+        user_client = GhostfolioClient(access_token=token)
+        cl.user_session.set("ghostfolio_client", user_client)
 
-    email = email_res["output"].strip()
-    if not email:
-        await cl.Message(content="Email cannot be empty.").send()
-        return
-
-    # ── Step 2: Generate token & ask user to paste it ────────────
-    # Generate a fresh Ghostfolio account token
-    new_token = None
-    try:
-        result = await create_anonymous_user()
-        new_token = result["access_token"]
-    except Exception as e:
-        logger.error("Failed to create Ghostfolio user: %s", e)
-
-    if new_token:
-        await cl.Message(
-            content=(
-                f"**Hi {email}!** A new token has been generated "
-                "for you:\n\n"
-                f"```\n{new_token}\n```\n\n"
-                "**Save this token** — you'll need it to access "
-                "this portfolio again.\n\n"
-                "Now **paste a token below** to login:\n"
-                "- Paste the token above if you're a **new user**\n"
-                "- Or paste your **existing saved token** to load "
-                "your portfolio"
-            )
-        ).send()
-    else:
-        await cl.Message(
-            content=(
-                f"**Hi {email}!** Paste your existing "
-                "Ghostfolio token below to login:"
-            )
-        ).send()
-
-    token_res = await cl.AskUserMessage(
-        content="Paste your token:", timeout=300
-    ).send()
-    if not token_res:
-        return
-
-    token = token_res["output"].strip()
-    if not token:
-        await cl.Message(
-            content="No token provided. Please refresh to try again."
-        ).send()
-        return
-
-    # ── Validate the token ───────────────────────────────────────
-    user_info = await _validate_ghostfolio_token(token)
-    if not user_info:
-        await cl.Message(
-            content=(
-                "**Invalid token.** Please refresh the page "
-                "and try again."
-            )
-        ).send()
-        return
-
-    # ── Create per-user Ghostfolio client ────────────────────────
-    user_client = GhostfolioClient(access_token=token)
-    cl.user_session.set("ghostfolio_client", user_client)
-    cl.user_session.set("authenticated", True)
-    cl.user_session.set("user_email", email)
-
-    # ── Model selector ───────────────────────────────────────────
+    # Model selector
     models = _available_models()
     model_choices = {m["label"]: m["id"] for m in models}
     cl.user_session.set("model_choices", model_choices)
@@ -198,7 +187,6 @@ async def on_start():
         (m["label"] for m in models if m["id"] == DEFAULT_MODEL_ID),
         models[0]["label"],
     )
-
     chat_settings = cl.ChatSettings([
         Select(
             id="model",
@@ -209,20 +197,17 @@ async def on_start():
     ])
     await chat_settings.send()
 
-    # ── Welcome message ──────────────────────────────────────────
+    # Welcome message
     spec = get_model_spec(DEFAULT_MODEL_ID)
-    is_new = token == new_token
-    accounts_str = (
-        ", ".join(user_info["accounts"])
-        if user_info["accounts"]
-        else "None yet"
-    )
 
     if is_new:
         await cl.Message(
             content=(
-                "**You're all set!** 🎉 "
-                "Your portfolio is empty — let's fix that.\n\n"
+                f"**Welcome, {email}!** 🎉\n\n"
+                "Your new Ghostfolio token "
+                "(save it for next login):\n\n"
+                f"```\n{token}\n```\n\n"
+                "Your portfolio is empty. "
                 "Add your first trade:\n"
                 '- *"I bought 10 shares of AAPL at $230"*\n'
                 '- *"Add a purchase: 5 VOO at $520"*\n\n'
@@ -231,10 +216,13 @@ async def on_start():
             )
         ).send()
     else:
+        accounts_str = (
+            ", ".join(accounts) if accounts else "None yet"
+        )
         await cl.Message(
             content=(
-                f"**Logged in!** 🏦 "
-                f"Currency: **{user_info['currency']}** | "
+                f"**Welcome back, {email}!** 🏦\n\n"
+                f"Currency: **{currency}** | "
                 f"Accounts: **{accounts_str}**\n\n"
                 "Try asking:\n"
                 "- *\"Show me my portfolio summary\"*\n"
@@ -264,9 +252,6 @@ async def on_settings_update(settings_update):
 @cl.on_message
 async def on_message(message: cl.Message):
     """Handle incoming chat messages with per-user Ghostfolio client."""
-    if not cl.user_session.get("authenticated"):
-        return  # ignore messages until token auth is done
-
     model_id = cl.user_session.get("model_id", DEFAULT_MODEL_ID)
     history = cl.user_session.get("message_history", [])
 
