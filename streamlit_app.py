@@ -32,10 +32,12 @@ TOOL_ICONS = {
 DEFAULTS = {
     "authenticated": False,
     "access_token": None,
+    "user_email": None,
     "ghostfolio_client": None,
     "chat_history": [],
     "model_id": DEFAULT_MODEL_ID,
     "signup_token": None,
+    "signup_email": None,
 }
 for key, val in DEFAULTS.items():
     if key not in st.session_state:
@@ -86,7 +88,12 @@ def render_auth_page():
     tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
 
     with tab_login:
-        st.markdown("Enter your Ghostfolio security token to access your portfolio.")
+        st.markdown("Enter your email and security token to access your portfolio.")
+        login_email = st.text_input(
+            "Email Address",
+            placeholder="you@example.com",
+            key="login_email",
+        )
         token_input = st.text_input(
             "Security Token",
             type="password",
@@ -94,40 +101,59 @@ def render_auth_page():
             key="login_token",
         )
         if st.button("Login", key="login_btn", use_container_width=True):
-            if not token_input.strip():
-                st.error("Please enter your security token.")
+            if not login_email.strip() or not token_input.strip():
+                st.error("Please enter both email and security token.")
             else:
                 with st.spinner("Validating token..."):
                     try:
-                        client = GhostfolioClient(access_token=token_input.strip())
+                        client = GhostfolioClient(
+                            access_token=token_input.strip()
+                        )
                         run_async(client._authenticate())
                         st.session_state["authenticated"] = True
                         st.session_state["access_token"] = token_input.strip()
+                        st.session_state["user_email"] = login_email.strip()
                         st.session_state["ghostfolio_client"] = client
                         st.rerun()
                     except Exception:
-                        st.error("Invalid token. Please check and try again.")
+                        st.error(
+                            "Invalid token. Please check and try again."
+                        )
 
     with tab_signup:
         # If we already created a token, show it before entering chat
         if st.session_state["signup_token"]:
             st.success("Account created successfully!")
-            st.warning(
-                "⚠️ **IMPORTANT:** Save your security token below. "
-                "You will need it to log in again. It is only shown once."
+            st.info(
+                f"**Email:** {st.session_state.get('signup_email', '')}"
             )
+            st.warning(
+                "⚠️ **IMPORTANT:** Save your credentials below. "
+                "You will need them to log in again."
+            )
+            st.markdown("**Your Security Token:**")
             st.code(st.session_state["signup_token"], language=None)
-            if st.button("Continue to Chat →", key="continue_btn", use_container_width=True):
+            if st.button(
+                "Continue to Chat →",
+                key="continue_btn",
+                use_container_width=True,
+            ):
                 st.session_state["authenticated"] = True
                 st.session_state["signup_token"] = None
+                st.session_state["signup_email"] = None
                 st.rerun()
             return
 
         st.markdown("Create a new portfolio account.")
+        signup_email = st.text_input(
+            "Email Address",
+            placeholder="you@example.com",
+            key="signup_email_input",
+        )
         st.markdown(
             "**Terms and Conditions**\n\n"
-            "This AI agent provides financial data from your Ghostfolio portfolio. "
-            "It does not provide financial advice. "
+            "This AI agent provides financial data from your "
+            "Ghostfolio portfolio. It does not provide financial advice. "
             "All investment decisions are your own responsibility."
         )
         agree = st.checkbox(
@@ -138,7 +164,7 @@ def render_auth_page():
         if st.button(
             "Create Account",
             key="signup_btn",
-            disabled=not agree,
+            disabled=(not agree or not signup_email.strip()),
             use_container_width=True,
         ):
             with st.spinner("Creating your account..."):
@@ -146,13 +172,14 @@ def render_auth_page():
                     result = run_async(create_anonymous_user())
                     new_token = result["access_token"]
 
-                    # Prepare client but don't authenticate yet
                     client = GhostfolioClient(access_token=new_token)
                     run_async(client._authenticate())
                     st.session_state["access_token"] = new_token
+                    st.session_state["user_email"] = signup_email.strip()
                     st.session_state["ghostfolio_client"] = client
                     # Stay on auth page to show token first
                     st.session_state["signup_token"] = new_token
+                    st.session_state["signup_email"] = signup_email.strip()
                     st.rerun()
                 except Exception as e:
                     st.error(f"Failed to create account: {e}")
@@ -182,6 +209,9 @@ def render_chat_page():
         st.session_state["model_id"] = model_options[selected_label]
 
         st.divider()
+        email = st.session_state.get("user_email", "")
+        if email:
+            st.caption(f"User: {email}")
         token = st.session_state.get("access_token", "")
         if token:
             st.caption(f"Token: ...{token[-8:]}")
@@ -203,9 +233,11 @@ def render_chat_page():
     # Welcome message if no history
     if not st.session_state["chat_history"]:
         spec = get_model_spec(st.session_state["model_id"])
+        user_name = st.session_state.get("user_email", "")
+        greeting = f"**Welcome, {user_name}!**" if user_name else "**Welcome!**"
         with st.chat_message("assistant"):
             st.markdown(
-                "**Welcome!** Your portfolio is ready.\n\n"
+                f"{greeting} Your portfolio is ready.\n\n"
                 "Try asking:\n"
                 '- "I bought 10 shares of AAPL at $230"\n'
                 '- "Show me my portfolio summary"\n'
