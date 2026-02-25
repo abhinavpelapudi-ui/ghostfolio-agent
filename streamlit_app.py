@@ -33,11 +33,13 @@ DEFAULTS = {
     "authenticated": False,
     "access_token": None,
     "user_email": None,
+    "user_name": None,
     "ghostfolio_client": None,
     "chat_history": [],
     "model_id": DEFAULT_MODEL_ID,
     "signup_token": None,
     "signup_email": None,
+    "signup_name": None,
 }
 for key, val in DEFAULTS.items():
     if key not in st.session_state:
@@ -88,7 +90,12 @@ def render_auth_page():
     tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
 
     with tab_login:
-        st.markdown("Enter your email and security token to access your portfolio.")
+        st.markdown("Enter your name, email and security token to access your portfolio.")
+        login_name = st.text_input(
+            "Name",
+            placeholder="John Doe",
+            key="login_name",
+        )
         login_email = st.text_input(
             "Email Address",
             placeholder="you@example.com",
@@ -101,8 +108,8 @@ def render_auth_page():
             key="login_token",
         )
         if st.button("Login", key="login_btn", use_container_width=True):
-            if not login_email.strip() or not token_input.strip():
-                st.error("Please enter both email and security token.")
+            if not login_name.strip() or not login_email.strip() or not token_input.strip():
+                st.error("Please enter your name, email and security token.")
             else:
                 with st.spinner("Validating token..."):
                     try:
@@ -112,6 +119,7 @@ def render_auth_page():
                         run_async(client._authenticate())
                         st.session_state["authenticated"] = True
                         st.session_state["access_token"] = token_input.strip()
+                        st.session_state["user_name"] = login_name.strip()
                         st.session_state["user_email"] = login_email.strip()
                         st.session_state["ghostfolio_client"] = client
                         st.rerun()
@@ -125,6 +133,7 @@ def render_auth_page():
         if st.session_state["signup_token"]:
             st.success("Account created successfully!")
             st.info(
+                f"**Name:** {st.session_state.get('signup_name', '')}  \n"
                 f"**Email:** {st.session_state.get('signup_email', '')}"
             )
             st.warning(
@@ -141,10 +150,16 @@ def render_auth_page():
                 st.session_state["authenticated"] = True
                 st.session_state["signup_token"] = None
                 st.session_state["signup_email"] = None
+                st.session_state["signup_name"] = None
                 st.rerun()
             return
 
         st.markdown("Create a new portfolio account.")
+        signup_name = st.text_input(
+            "Name",
+            placeholder="John Doe",
+            key="signup_name_input",
+        )
         signup_email = st.text_input(
             "Email Address",
             placeholder="you@example.com",
@@ -164,7 +179,7 @@ def render_auth_page():
         if st.button(
             "Create Account",
             key="signup_btn",
-            disabled=(not agree or not signup_email.strip()),
+            disabled=(not agree or not signup_name.strip() or not signup_email.strip()),
             use_container_width=True,
         ):
             with st.spinner("Creating your account..."):
@@ -175,10 +190,12 @@ def render_auth_page():
                     client = GhostfolioClient(access_token=new_token)
                     run_async(client._authenticate())
                     st.session_state["access_token"] = new_token
+                    st.session_state["user_name"] = signup_name.strip()
                     st.session_state["user_email"] = signup_email.strip()
                     st.session_state["ghostfolio_client"] = client
                     # Stay on auth page to show token first
                     st.session_state["signup_token"] = new_token
+                    st.session_state["signup_name"] = signup_name.strip()
                     st.session_state["signup_email"] = signup_email.strip()
                     st.rerun()
                 except Exception as e:
@@ -209,9 +226,12 @@ def render_chat_page():
         st.session_state["model_id"] = model_options[selected_label]
 
         st.divider()
+        name = st.session_state.get("user_name", "")
+        if name:
+            st.caption(f"User: {name}")
         email = st.session_state.get("user_email", "")
         if email:
-            st.caption(f"User: {email}")
+            st.caption(f"Email: {email}")
         token = st.session_state.get("access_token", "")
         if token:
             st.caption(f"Token: ...{token[-8:]}")
@@ -233,8 +253,8 @@ def render_chat_page():
     # Welcome message if no history
     if not st.session_state["chat_history"]:
         spec = get_model_spec(st.session_state["model_id"])
-        user_name = st.session_state.get("user_email", "")
-        greeting = f"**Welcome, {user_name}!**" if user_name else "**Welcome!**"
+        display_name = st.session_state.get("user_name", "") or st.session_state.get("user_email", "")
+        greeting = f"**Welcome, {display_name}!**" if display_name else "**Welcome!**"
         with st.chat_message("assistant"):
             st.markdown(
                 f"{greeting} Your portfolio is ready.\n\n"
