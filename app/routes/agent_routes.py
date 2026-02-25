@@ -1,9 +1,10 @@
 """Agent command endpoint."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.agent.agent import run_agent
 from app.agent.models import DEFAULT_MODEL_ID, SUPPORTED_MODELS
+from app.auth import require_auth
 from app.config import settings
 from app.models.schemas import AgentCommandRequest, AgentCommandResponse
 
@@ -11,7 +12,7 @@ router = APIRouter()
 
 
 @router.post("/command", response_model=AgentCommandResponse)
-async def handle_command(request: AgentCommandRequest):
+async def handle_command(request: AgentCommandRequest, _token: str = Depends(require_auth)):
     if not request.command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty")
 

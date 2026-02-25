@@ -1,0 +1,58 @@
+# Rubrics — Stage 4: Multi-dimensional quality scoring
+# Weighted dimensions with explicit score anchors.
+# No anchor = no consistency. Every point on the scale is defined.
+
+dimensions:
+  relevance:
+    weight: 0.30
+    question: "Does the response address the user's question?"
+    scores:
+      5: "Directly answers the question with all requested data points. No off-topic content."
+      3: "Addresses the question but includes some irrelevant information or misses a minor aspect."
+      1: "Partially addresses the question but misses the core intent."
+      0: "Completely off-topic or refuses to answer when data is available."
+
+  accuracy:
+    weight: 0.40
+    question: "Are the facts and numbers correct?"
+    scores:
+      5: "All numbers match tool output exactly. No fabricated data. Currency and percentages correctly formatted."
+      3: "Mostly correct with one minor numerical inaccuracy (e.g., rounding difference)."
+      1: "Contains significant numerical errors or presents data not from tool output."
+      0: "Completely fabricated numbers or contradicts tool data."
+
+  completeness:
+    weight: 0.20
+    question: "Does it fully answer the question?"
+    scores:
+      5: "Covers all aspects of the query. Includes relevant context (e.g., disclaimer for risk topics)."
+      3: "Answers the main question but omits secondary details the user would find useful."
+      1: "Provides only a partial answer, missing key information."
+      0: "Fails to provide any useful information."
+
+  clarity:
+    weight: 0.10
+    question: "Is the response easy to understand?"
+    scores:
+      5: "Well-structured with bullet points or tables. Numbers formatted consistently. Concise."
+      3: "Readable but could be better organized. Some formatting inconsistencies."
+      1: "Confusing structure, wall of text, or inconsistent formatting."
+      0: "Incomprehensible or contradictory."
+
+# Score thresholds for action
+thresholds:
+  excellent:
+    min: 4.5
+    action: "Ship it"
+  good:
+    min: 3.5
+    action: "Minor tweaks"
+  acceptable:
+    min: 2.5
+    action: "Review and improve"
+  poor:
+    min: 1.5
+    action: "Significant work needed"
+  critical:
+    min: 0
+    action: "Stop. Fix now."

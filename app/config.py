@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     default_llm_provider: str = "groq"
     max_agent_iterations: int = Field(default=10, ge=1, le=50)
     log_level: str = "INFO"
+    agent_api_key: str = ""  # If empty, falls back to ghostfolio_access_token
 
 
 settings = Settings()

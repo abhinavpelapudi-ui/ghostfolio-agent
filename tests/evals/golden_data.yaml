@@ -1,0 +1,181 @@
+# Golden Sets — Stage 1: Baseline correctness
+# 15 cases that MUST all pass. Deterministic, binary, no LLM needed.
+# Run after every commit. If these fail, something is fundamentally broken.
+#
+# Four check types:
+#   tool_selection   — did the agent call the right tool?
+#   content_validation — does the response contain key facts?
+#   negative_validation — agent must NOT hallucinate or give up
+#   numerical_validation — are numbers from tool output preserved?
+
+# ── Happy Path: Portfolio Summary ─────────────────────────────────
+
+- id: "gs-001"
+  query: "Show me my portfolio summary"
+  expected_tools:
+    - portfolio_summary
+  must_contain:
+    - "125,000"
+    - "VOO"
+  must_not_contain:
+    - "I don't know"
+    - "no data"
+    - "I cannot"
+
+- id: "gs-002"
+  query: "What is my total portfolio value?"
+  expected_tools:
+    - portfolio_summary
+  must_contain:
+    - "125,000"
+  must_not_contain:
+    - "I don't have access"
+    - "unable to"
+
+- id: "gs-003"
+  query: "What are my top holdings?"
+  expected_tools:
+    - portfolio_summary
+  must_contain:
+    - "VOO"
+    - "AAPL"
+  must_not_contain:
+    - "I don't know"
+
+# ── Happy Path: Performance ──────────────────────────────────────
+
+- id: "gs-004"
+  query: "How is my portfolio performing?"
+  expected_tools:
+    - portfolio_performance
+  must_contain:
+    - "25,000"
+    - "25.00"
+  must_not_contain:
+    - "no performance data"
+    - "I cannot"
+
+- id: "gs-005"
+  query: "Show me my 1 year performance"
+  expected_tools:
+    - portfolio_performance
+  must_not_contain:
+    - "I don't know"
+    - "error"
+
+# ── Happy Path: Holding Detail ───────────────────────────────────
+
+- id: "gs-006"
+  query: "Tell me about my AAPL holding"
+  expected_tools:
+    - holding_detail
+  must_contain:
+    - "Apple"
+    - "153.4"
+  must_not_contain:
+    - "not found"
+    - "I don't know"
+
+- id: "gs-007"
+  query: "What is my Apple stock worth?"
+  expected_tools:
+    - holding_detail
+  must_contain:
+    - "Apple"
+  must_not_contain:
+    - "I cannot find"
+
+# ── Happy Path: Transactions ─────────────────────────────────────
+
+- id: "gs-008"
+  query: "Show me my recent transactions"
+  expected_tools:
+    - transactions
+  must_contain:
+    - "AAPL"
+    - "BUY"
+  must_not_contain:
+    - "no transactions"
+    - "I don't have"
+
+- id: "gs-009"
+  query: "What trades have I made?"
+  expected_tools:
+    - transactions
+  must_contain:
+    - "VOO"
+  must_not_contain:
+    - "unable to"
+
+# ── Happy Path: Dividends ────────────────────────────────────────
+
+- id: "gs-010"
+  query: "Show me dividends for VOO"
+  expected_tools:
+    - dividend_history
+  must_contain:
+    - "150"
+    - "160"
+  must_not_contain:
+    - "no dividend"
+    - "I don't know"
+
+# ── Happy Path: Symbol Search ────────────────────────────────────
+
+- id: "gs-011"
+  query: "Search for Apple stock ticker"
+  expected_tools:
+    - symbol_search
+  must_contain:
+    - "AAPL"
+  must_not_contain:
+    - "I cannot search"
+
+# ── Happy Path: Risk Analysis ────────────────────────────────────
+
+- id: "gs-012"
+  query: "How diversified is my portfolio?"
+  expected_tools:
+    - market_sentiment
+  must_contain:
+    - "Technology"
+  must_not_contain:
+    - "I don't know"
+    - "no data"
+
+# ── Happy Path: Trade Entry ──────────────────────────────────────
+
+- id: "gs-013"
+  query: "I bought 5 shares of TSLA at $250"
+  expected_tools:
+    - add_trade
+  must_contain:
+    - "TSLA"
+    - "5"
+    - "250"
+  must_not_contain:
+    - "I cannot"
+    - "error"
+
+# ── Disclaimer Check ─────────────────────────────────────────────
+
+- id: "gs-014"
+  query: "What is the risk level of my portfolio?"
+  expected_tools:
+    - market_sentiment
+  must_contain:
+    - "disclaimer"
+  must_not_contain:
+    - "I don't have access"
+
+# ── Negative: Don't hallucinate when tools return data ───────────
+
+- id: "gs-015"
+  query: "Give me my portfolio overview"
+  expected_tools:
+    - portfolio_summary
+  must_not_contain:
+    - "I don't have access to your portfolio"
+    - "I cannot retrieve"
+    - "no portfolio found"
+    - "unfortunately"

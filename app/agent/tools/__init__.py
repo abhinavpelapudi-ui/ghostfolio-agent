@@ -1,3 +1,4 @@
+from app.agent.tools.add_trade import add_trade
 from app.agent.tools.dividend_history import dividend_history
 from app.agent.tools.holding_detail import holding_detail
 from app.agent.tools.market_sentiment import market_sentiment
@@ -14,4 +15,5 @@ ALL_TOOLS = [
     dividend_history,
     symbol_search,
     market_sentiment,
+    add_trade,
 ]

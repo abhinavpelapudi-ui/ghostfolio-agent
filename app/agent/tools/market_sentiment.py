@@ -15,11 +15,18 @@ async def market_sentiment() -> str:
     Use when user asks about risk, diversification, or portfolio health."""
     try:
         details = await ghostfolio_client.get_portfolio_details()
-        holdings = details.get("holdings", [])
-        if not holdings or not isinstance(holdings, list):
+        holdings_raw = details.get("holdings", {})
+
+        # holdings is a dict keyed by symbol, convert to list
+        if isinstance(holdings_raw, dict):
+            holdings = list(holdings_raw.values())
+        else:
+            holdings = holdings_raw or []
+
+        if not holdings:
             return json.dumps({"error": "No holdings found in portfolio"})
 
-        total_value = sum(h.get("value", 0) for h in holdings)
+        total_value = sum(h.get("valueInBaseCurrency", 0) for h in holdings)
         if total_value == 0:
             return json.dumps({"error": "Portfolio total value is zero"})
 
@@ -28,7 +35,7 @@ async def market_sentiment() -> str:
         for h in holdings:
             for s in h.get("sectors", []):
                 name = s.get("name", "Unknown")
-                weight = s.get("weight", 0) * h.get("value", 0)
+                weight = s.get("weight", 0) * h.get("valueInBaseCurrency", 0)
                 sectors[name] = sectors.get(name, 0) + weight
         sector_pcts = {k: round(v / total_value * 100, 2) for k, v in sectors.items()}
 
@@ -37,7 +44,7 @@ async def market_sentiment() -> str:
         for h in holdings:
             for c in h.get("countries", []):
                 name = c.get("name", "Unknown")
-                weight = c.get("weight", 0) * h.get("value", 0)
+                weight = c.get("weight", 0) * h.get("valueInBaseCurrency", 0)
                 countries[name] = countries.get(name, 0) + weight
         country_pcts = {k: round(v / total_value * 100, 2) for k, v in countries.items()}
 
@@ -45,13 +52,13 @@ async def market_sentiment() -> str:
         asset_classes: dict[str, float] = {}
         for h in holdings:
             ac = h.get("assetClass", "UNKNOWN")
-            asset_classes[ac] = asset_classes.get(ac, 0) + h.get("value", 0)
+            asset_classes[ac] = asset_classes.get(ac, 0) + h.get("valueInBaseCurrency", 0)
         ac_pcts = {k: round(v / total_value * 100, 2) for k, v in asset_classes.items()}
 
         # Concentration risk
-        sorted_holdings = sorted(holdings, key=lambda h: h.get("value", 0), reverse=True)
-        top_holding_pct = round(sorted_holdings[0].get("value", 0) / total_value * 100, 2)
-        top_3_pct = round(sum(h.get("value", 0) for h in sorted_holdings[:3]) / total_value * 100, 2)
+        sorted_holdings = sorted(holdings, key=lambda h: h.get("valueInBaseCurrency", 0), reverse=True)
+        top_holding_pct = round(sorted_holdings[0].get("valueInBaseCurrency", 0) / total_value * 100, 2)
+        top_3_pct = round(sum(h.get("valueInBaseCurrency", 0) for h in sorted_holdings[:3]) / total_value * 100, 2)
 
         # Risk flags
         risk_flags = []

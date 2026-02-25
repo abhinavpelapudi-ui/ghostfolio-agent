@@ -1,12 +1,5 @@
-"""Eval test configuration — skip if LangSmith API key is not set."""
+"""Eval test configuration.
 
-import os
-
-import pytest
-
-
-def pytest_collection_modifyitems(config, items):
-    if not os.environ.get("LANGCHAIN_API_KEY"):
-        skip = pytest.mark.skip(reason="LANGCHAIN_API_KEY not set — skipping evals")
-        for item in items:
-            item.add_marker(skip)
+Golden sets and labeled scenarios run deterministically (no API keys needed).
+LLM judge tests skip automatically if GROQ_API_KEY is not set (via pytestmark).
+"""

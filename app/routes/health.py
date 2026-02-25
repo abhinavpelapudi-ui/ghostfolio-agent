@@ -2,8 +2,9 @@
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.auth import require_auth
 from app.clients.ghostfolio import ghostfolio_client
 from app.config import settings
 from app.tracing.cost_tracker import cost_tracker
@@ -34,5 +35,5 @@ async def health():
 
 
 @router.get("/agent/costs")
-async def get_costs():
+async def get_costs(_token: str = Depends(require_auth)):
     return cost_tracker.get_summary()

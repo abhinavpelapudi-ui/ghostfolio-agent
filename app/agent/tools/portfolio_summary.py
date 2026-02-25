@@ -15,37 +15,44 @@ async def portfolio_summary() -> str:
     try:
         details = await ghostfolio_client.get_portfolio_details()
         summary = details.get("summary", {})
-        holdings = details.get("holdings", [])
+        holdings_raw = details.get("holdings", {})
+
+        # holdings is a dict keyed by symbol, convert to list
+        if isinstance(holdings_raw, dict):
+            holdings = list(holdings_raw.values())
+        else:
+            holdings = holdings_raw or []
 
         result = {
-            "total_value": summary.get("currentValue", 0),
+            "total_value": summary.get("currentValueInBaseCurrency", 0),
             "total_investment": summary.get("totalInvestment", 0),
-            "absolute_change": summary.get("absoluteChange", 0),
-            "relative_change_pct": round((summary.get("relativeChange", 0)) * 100, 2),
-            "currency": summary.get("currency", "USD"),
+            "net_performance": summary.get("netPerformance", 0),
+            "net_performance_pct": round(summary.get("netPerformancePercentage", 0) * 100, 2),
+            "gross_performance": summary.get("grossPerformance", 0),
+            "annualized_return_pct": round(summary.get("annualizedPerformancePercent", 0) * 100, 2),
             "dividend_in_base_currency": summary.get("dividendInBaseCurrency", 0),
-            "fees_in_base_currency": summary.get("feesInBaseCurrency", 0),
-            "holdings_count": len(holdings) if isinstance(holdings, list) else 0,
+            "fees": summary.get("fees", 0),
+            "cash": summary.get("cash", 0),
+            "holdings_count": len(holdings),
             "top_holdings": [],
             "allocation_by_asset_class": {},
         }
 
-        if isinstance(holdings, list):
-            sorted_h = sorted(holdings, key=lambda h: h.get("value", 0), reverse=True)
-            for h in sorted_h[:5]:
-                result["top_holdings"].append({
-                    "symbol": h.get("symbol", ""),
-                    "name": h.get("name", ""),
-                    "value": h.get("value", 0),
-                    "weight_pct": round(h.get("allocationInPercentage", 0) * 100, 2),
-                    "performance_pct": round(h.get("netPerformancePercentage", 0) * 100, 2),
-                })
+        sorted_h = sorted(holdings, key=lambda h: h.get("valueInBaseCurrency", 0), reverse=True)
+        for h in sorted_h[:5]:
+            result["top_holdings"].append({
+                "symbol": h.get("symbol", ""),
+                "name": h.get("name", ""),
+                "value": h.get("valueInBaseCurrency", 0),
+                "weight_pct": round(h.get("allocationInPercentage", 0) * 100, 2),
+                "performance_pct": round(h.get("netPerformancePercent", 0) * 100, 2),
+            })
 
-            for h in holdings:
-                ac = h.get("assetClass", "UNKNOWN")
-                result["allocation_by_asset_class"][ac] = (
-                    result["allocation_by_asset_class"].get(ac, 0) + h.get("value", 0)
-                )
+        for h in holdings:
+            ac = h.get("assetClass", "UNKNOWN")
+            result["allocation_by_asset_class"][ac] = round(
+                result["allocation_by_asset_class"].get(ac, 0) + h.get("valueInBaseCurrency", 0), 2
+            )
 
         return json.dumps(result, indent=2)
     except Exception as e:

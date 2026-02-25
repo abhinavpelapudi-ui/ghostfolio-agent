@@ -19,20 +19,17 @@ async def portfolio_performance(date_range: str = "max") -> str:
         date_range = "max"
 
     try:
-        perf = await ghostfolio_client.get_portfolio_performance(date_range=date_range)
-        chart = perf.get("chart", [])
+        data = await ghostfolio_client.get_portfolio_performance(date_range=date_range)
+        perf = data.get("performance", {})
+        chart = data.get("chart", [])
 
         result = {
             "date_range": date_range,
-            "current_gross_performance": perf.get("currentGrossPerformance", 0),
-            "current_gross_performance_pct": round(perf.get("currentGrossPerformancePercent", 0) * 100, 2),
-            "current_net_performance": perf.get("currentNetPerformance", 0),
-            "current_net_performance_pct": round(perf.get("currentNetPerformancePercent", 0) * 100, 2),
+            "net_performance": perf.get("netPerformance", 0),
+            "net_performance_pct": round(perf.get("netPerformancePercentage", 0) * 100, 2),
             "total_investment": perf.get("totalInvestment", 0),
-            "current_value": perf.get("currentValue", 0),
-            "annual_return_pct": round(perf.get("annualizedPerformancePercent", 0) * 100, 2),
-            "dividend": perf.get("dividend", 0),
-            "fees": perf.get("fees", 0),
+            "current_value": perf.get("currentValueInBaseCurrency", 0),
+            "current_net_worth": perf.get("currentNetWorth", 0),
             "chart_points": len(chart),
             "first_date": chart[0].get("date", "") if chart else "",
             "last_date": chart[-1].get("date", "") if chart else "",

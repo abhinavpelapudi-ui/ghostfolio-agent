@@ -56,9 +56,28 @@ class GhostfolioClient:
     async def get_holding_detail(self, data_source: str, symbol: str) -> dict:
         return await self._get(f"/api/v1/portfolio/holding/{data_source}/{symbol}")
 
+    async def _post(self, path: str, body: dict) -> dict:
+        if not self._bearer_token:
+            await self._authenticate()
+        headers = {"Authorization": f"Bearer {self._bearer_token}"}
+        resp = await self._client.post(
+            f"{self._base_url}{path}", headers=headers, json=body
+        )
+        if resp.status_code == 401:
+            await self._authenticate()
+            headers = {"Authorization": f"Bearer {self._bearer_token}"}
+            resp = await self._client.post(
+                f"{self._base_url}{path}", headers=headers, json=body
+            )
+        resp.raise_for_status()
+        return resp.json()
+
     # ── Orders ──────────────────────────────────────────────────────
     async def get_orders(self, **filters) -> dict:
         return await self._get("/api/v1/order", params=filters)
+
+    async def create_order(self, order: dict) -> dict:
+        return await self._post("/api/v1/order", order)
 
     # ── Dividends ───────────────────────────────────────────────────
     async def get_dividends(self, data_source: str, symbol: str) -> dict:
