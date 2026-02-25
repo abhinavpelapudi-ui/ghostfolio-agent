@@ -49,12 +49,7 @@ for key, val in DEFAULTS.items():
 
 
 # ── Cookie-based session persistence ─────────────────────────────────
-@st.cache_resource
-def _get_cookie_manager():
-    return stx.CookieManager()
-
-
-cookie_manager = _get_cookie_manager()
+cookie_manager = stx.CookieManager()
 
 COOKIE_EXPIRY = datetime.now() + timedelta(days=30)
 
