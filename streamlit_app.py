@@ -78,6 +78,8 @@ def restore_session_from_cookies():
     """Auto-login if valid cookies exist."""
     if st.session_state["authenticated"]:
         return
+    if st.session_state.get("_logged_out"):
+        return
     saved_token = cookie_manager.get("gf_token")
     if not saved_token:
         return
@@ -286,6 +288,7 @@ def render_chat_page():
             clear_session_cookies()
             for key in DEFAULTS:
                 st.session_state[key] = DEFAULTS[key]
+            st.session_state["_logged_out"] = True
             st.rerun()
 
     # Main chat area
