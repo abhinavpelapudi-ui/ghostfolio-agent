@@ -109,7 +109,7 @@ def render_auth_page():
                         st.error("Invalid token. Please check and try again.")
 
     with tab_signup:
-        # If we already created a token, show it
+        # If we already created a token, show it before entering chat
         if st.session_state["signup_token"]:
             st.success("Account created successfully!")
             st.warning(
@@ -118,6 +118,7 @@ def render_auth_page():
             )
             st.code(st.session_state["signup_token"], language=None)
             if st.button("Continue to Chat →", key="continue_btn", use_container_width=True):
+                st.session_state["authenticated"] = True
                 st.session_state["signup_token"] = None
                 st.rerun()
             return
@@ -126,24 +127,31 @@ def render_auth_page():
         st.markdown(
             "**Terms and Conditions**\n\n"
             "This AI agent provides financial data from your Ghostfolio portfolio. "
-            "It does not provide financial advice. All investment decisions are your own responsibility."
+            "It does not provide financial advice. "
+            "All investment decisions are your own responsibility."
         )
         agree = st.checkbox(
-            "I understand that if I lose my security token, I cannot recover my account.",
+            "I understand that if I lose my security token, "
+            "I cannot recover my account.",
             key="agree_terms",
         )
-        if st.button("Create Account", key="signup_btn", disabled=not agree, use_container_width=True):
+        if st.button(
+            "Create Account",
+            key="signup_btn",
+            disabled=not agree,
+            use_container_width=True,
+        ):
             with st.spinner("Creating your account..."):
                 try:
                     result = run_async(create_anonymous_user())
                     new_token = result["access_token"]
 
-                    # Auto-login
+                    # Prepare client but don't authenticate yet
                     client = GhostfolioClient(access_token=new_token)
                     run_async(client._authenticate())
-                    st.session_state["authenticated"] = True
                     st.session_state["access_token"] = new_token
                     st.session_state["ghostfolio_client"] = client
+                    # Stay on auth page to show token first
                     st.session_state["signup_token"] = new_token
                     st.rerun()
                 except Exception as e:
