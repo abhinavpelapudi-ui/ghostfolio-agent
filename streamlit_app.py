@@ -130,7 +130,6 @@ def build_langchain_history() -> list:
 
 # ── Auth Page ────────────────────────────────────────────────────────
 def render_auth_page():
-    st.set_page_config(page_title="Ghostfolio AI Agent", page_icon="🏦", layout="centered")
     st.title("🏦 Ghostfolio AI Agent")
     st.markdown("Manage your investment portfolio with AI")
 
@@ -247,8 +246,6 @@ def render_auth_page():
 
 # ── Chat Page ────────────────────────────────────────────────────────
 def render_chat_page():
-    st.set_page_config(page_title="Ghostfolio AI Agent", page_icon="🏦", layout="wide")
-
     # Sidebar
     with st.sidebar:
         st.title("⚙️ Settings")
@@ -367,6 +364,16 @@ def render_chat_page():
 
 
 # ── Main ─────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Ghostfolio AI Agent", page_icon="🏦", layout="wide")
+
+# CookieManager needs one render cycle to load cookies from browser JS.
+# Show a loading screen on the first render to avoid flashing the login page.
+if "_cookies_ready" not in st.session_state:
+    st.session_state["_cookies_ready"] = True
+    st.title("🏦 Ghostfolio AI Agent")
+    st.caption("Loading your session...")
+    st.stop()
+
 restore_session_from_cookies()
 
 if st.session_state["authenticated"]:
