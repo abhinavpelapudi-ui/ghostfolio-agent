@@ -69,9 +69,11 @@ def save_session_cookies():
 
 def clear_session_cookies():
     """Remove session cookies on logout."""
-    cookie_manager.delete("gf_token")
-    cookie_manager.delete("gf_name")
-    cookie_manager.delete("gf_email")
+    # Set to empty with immediate expiry — more reliable than delete()
+    expired = datetime.now() - timedelta(days=1)
+    cookie_manager.set("gf_token", "", expires_at=expired)
+    cookie_manager.set("gf_name", "", expires_at=expired)
+    cookie_manager.set("gf_email", "", expires_at=expired)
 
 
 def restore_session_from_cookies():
@@ -80,8 +82,8 @@ def restore_session_from_cookies():
         return
     if st.session_state.get("_logged_out"):
         return
-    saved_token = cookie_manager.get("gf_token")
-    if not saved_token:
+    saved_token = cookie_manager.get("gf_token") or ""
+    if not saved_token.strip():
         return
     try:
         client = GhostfolioClient(access_token=saved_token)
