@@ -9,7 +9,9 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agent.agent import get_agent
 from app.agent.models import DEFAULT_MODEL_ID, SUPPORTED_MODELS, get_model_spec
 from app.clients.ghostfolio import (
+    GhostfolioClient,
     _default_client,
+    create_anonymous_user,
     use_client,
 )
 from app.config import settings
@@ -60,9 +62,20 @@ def _available_models() -> list[dict]:
 
 @cl.on_chat_start
 async def on_start():
-    """Initialize session with shared Ghostfolio account."""
+    """Initialize session — auto-create a new Ghostfolio user per session."""
     cl.user_session.set("message_history", [])
     cl.user_session.set("model_id", DEFAULT_MODEL_ID)
+
+    # Create a new Ghostfolio user for this session
+    token = None
+    try:
+        result = await create_anonymous_user()
+        token = result["access_token"]
+        user_client = GhostfolioClient(access_token=token)
+        cl.user_session.set("ghostfolio_client", user_client)
+        logger.info("Created new Ghostfolio user for session")
+    except Exception as e:
+        logger.warning("Could not create Ghostfolio user: %s. Using default.", e)
 
     # Model selector
     models = _available_models()
@@ -85,18 +98,33 @@ async def on_start():
 
     spec = get_model_spec(DEFAULT_MODEL_ID)
 
-    await cl.Message(
-        content=(
-            "**Welcome to Ghostfolio AI Agent!** 🏦\n\n"
-            "Try asking:\n"
-            '- *"Show me my portfolio summary"*\n'
-            '- *"How has my portfolio performed?"*\n'
-            '- *"I bought 10 shares of AAPL at $230"*\n'
-            '- *"Search for Apple stock"*\n\n'
-            f"Model: **{spec.display_name}** — "
-            "change it in Settings"
-        )
-    ).send()
+    if token:
+        await cl.Message(
+            content=(
+                "**Welcome to Ghostfolio AI Agent!** 🎉\n\n"
+                "A new portfolio has been created for you.\n\n"
+                "Try:\n"
+                '- *"I bought 10 shares of AAPL at $230"*\n'
+                '- *"Show me my portfolio summary"*\n'
+                '- *"How has my portfolio performed?"*\n'
+                '- *"Search for Apple stock"*\n\n'
+                f"Model: **{spec.display_name}** — "
+                "change it in Settings"
+            )
+        ).send()
+    else:
+        await cl.Message(
+            content=(
+                "**Welcome to Ghostfolio AI Agent!** 🏦\n\n"
+                "Using shared portfolio.\n\n"
+                "Try asking:\n"
+                '- *"Show me my portfolio summary"*\n'
+                '- *"How has my portfolio performed?"*\n'
+                '- *"I bought 10 shares of AAPL at $230"*\n\n'
+                f"Model: **{spec.display_name}** — "
+                "change it in Settings"
+            )
+        ).send()
 
 
 @cl.on_settings_update
@@ -116,7 +144,7 @@ async def on_settings_update(settings_update):
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    """Handle incoming chat messages."""
+    """Handle incoming chat messages with per-user Ghostfolio client."""
     model_id = cl.user_session.get("model_id", DEFAULT_MODEL_ID)
     history = cl.user_session.get("message_history", [])
 
@@ -143,7 +171,10 @@ async def on_message(message: cl.Message):
     tool_outputs = []
     tools_called = []
 
-    with use_client(_default_client):
+    # Use per-user client if available, otherwise default
+    user_client = cl.user_session.get("ghostfolio_client", _default_client)
+
+    with use_client(user_client):
         try:
             result = await agent.ainvoke(
                 {"messages": history},
@@ -203,3 +234,11 @@ async def on_message(message: cl.Message):
                 "Please check that an LLM API key is configured."
             )
             await thinking_msg.update()
+
+
+@cl.on_chat_end
+async def on_end():
+    """Clean up per-user Ghostfolio client on session end."""
+    client = cl.user_session.get("ghostfolio_client")
+    if client and client is not _default_client:
+        await client.close()
