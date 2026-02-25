@@ -90,12 +90,7 @@ def render_auth_page():
     tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
 
     with tab_login:
-        st.markdown("Enter your name, email and security token to access your portfolio.")
-        login_name = st.text_input(
-            "Name",
-            placeholder="John Doe",
-            key="login_name",
-        )
+        st.markdown("Enter your email and security token to access your portfolio.")
         login_email = st.text_input(
             "Email Address",
             placeholder="you@example.com",
@@ -108,8 +103,8 @@ def render_auth_page():
             key="login_token",
         )
         if st.button("Login", key="login_btn", use_container_width=True):
-            if not login_name.strip() or not login_email.strip() or not token_input.strip():
-                st.error("Please enter your name, email and security token.")
+            if not login_email.strip() or not token_input.strip():
+                st.error("Please enter your email and security token.")
             else:
                 with st.spinner("Validating token..."):
                     try:
@@ -119,7 +114,6 @@ def render_auth_page():
                         run_async(client._authenticate())
                         st.session_state["authenticated"] = True
                         st.session_state["access_token"] = token_input.strip()
-                        st.session_state["user_name"] = login_name.strip()
                         st.session_state["user_email"] = login_email.strip()
                         st.session_state["ghostfolio_client"] = client
                         st.rerun()
