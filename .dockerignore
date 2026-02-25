@@ -11,3 +11,5 @@ docs
 .ruff_cache
 .mypy_cache
 .pytest_cache
+.DS_Store
+chainlit_app.py
