@@ -19,6 +19,7 @@ langfuse>=2.44.0
 
 # Chat UI
 streamlit>=1.40.0
+extra-streamlit-components>=0.1.60
 
 # Utilities
 python-multipart>=0.0.12

@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+from datetime import datetime, timedelta
 
+import extra_streamlit_components as stx
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -44,6 +46,56 @@ DEFAULTS = {
 for key, val in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = val
+
+
+# ── Cookie-based session persistence ─────────────────────────────────
+@st.cache_resource
+def _get_cookie_manager():
+    return stx.CookieManager()
+
+
+cookie_manager = _get_cookie_manager()
+
+COOKIE_EXPIRY = datetime.now() + timedelta(days=30)
+
+
+def save_session_cookies():
+    """Save current session credentials to browser cookies."""
+    token = st.session_state.get("access_token", "")
+    if token:
+        cookie_manager.set("gf_token", token, expires_at=COOKIE_EXPIRY)
+    name = st.session_state.get("user_name", "")
+    if name:
+        cookie_manager.set("gf_name", name, expires_at=COOKIE_EXPIRY)
+    email = st.session_state.get("user_email", "")
+    if email:
+        cookie_manager.set("gf_email", email, expires_at=COOKIE_EXPIRY)
+
+
+def clear_session_cookies():
+    """Remove session cookies on logout."""
+    cookie_manager.delete("gf_token")
+    cookie_manager.delete("gf_name")
+    cookie_manager.delete("gf_email")
+
+
+def restore_session_from_cookies():
+    """Auto-login if valid cookies exist."""
+    if st.session_state["authenticated"]:
+        return
+    saved_token = cookie_manager.get("gf_token")
+    if not saved_token:
+        return
+    try:
+        client = GhostfolioClient(access_token=saved_token)
+        run_async(client._authenticate())
+        st.session_state["authenticated"] = True
+        st.session_state["access_token"] = saved_token
+        st.session_state["user_name"] = cookie_manager.get("gf_name") or ""
+        st.session_state["user_email"] = cookie_manager.get("gf_email") or ""
+        st.session_state["ghostfolio_client"] = client
+    except Exception:
+        clear_session_cookies()
 
 
 def run_async(coro):
@@ -116,6 +168,7 @@ def render_auth_page():
                         st.session_state["access_token"] = token_input.strip()
                         st.session_state["user_email"] = login_email.strip()
                         st.session_state["ghostfolio_client"] = client
+                        save_session_cookies()
                         st.rerun()
                     except Exception:
                         st.error(
@@ -145,6 +198,7 @@ def render_auth_page():
                 st.session_state["signup_token"] = None
                 st.session_state["signup_email"] = None
                 st.session_state["signup_name"] = None
+                save_session_cookies()
                 st.rerun()
             return
 
@@ -237,6 +291,7 @@ def render_chat_page():
                     run_async(client.close())
                 except Exception:
                     pass
+            clear_session_cookies()
             for key in DEFAULTS:
                 st.session_state[key] = DEFAULTS[key]
             st.rerun()
@@ -317,6 +372,8 @@ def render_chat_page():
 
 
 # ── Main ─────────────────────────────────────────────────────────────
+restore_session_from_cookies()
+
 if st.session_state["authenticated"]:
     render_chat_page()
 else:
