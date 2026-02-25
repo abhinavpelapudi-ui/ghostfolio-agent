@@ -17,9 +17,6 @@ langchain-anthropic>=0.2.0
 langsmith>=0.3.4
 langfuse>=2.44.0
 
-# Chat UI
-streamlit>=1.40.0
-extra-streamlit-components>=0.1.60
-
 # Utilities
 python-multipart>=0.0.12
+aiofiles>=23.0.0

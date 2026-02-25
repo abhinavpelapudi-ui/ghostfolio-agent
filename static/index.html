@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ghostfolio AI Agent</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏦</text></svg>">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <!-- ── Auth View ──────────────────────────────────────────── -->
+  <div id="auth-view" class="view">
+    <div class="auth-card">
+      <h1>🏦 Ghostfolio AI Agent</h1>
+      <p class="subtitle">Manage your investment portfolio with AI</p>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="login">Login</button>
+        <button class="tab" data-tab="signup">Sign Up</button>
+      </div>
+
+      <!-- Login Tab -->
+      <div id="tab-login" class="tab-content active">
+        <p class="tab-desc">Enter your email and security token to access your portfolio.</p>
+        <form id="login-form">
+          <input type="email" id="login-email" placeholder="you@example.com" required>
+          <input type="password" id="login-token" placeholder="Paste your security token" required>
+          <button type="submit" class="btn-primary">Login</button>
+        </form>
+        <div id="login-error" class="error hidden"></div>
+      </div>
+
+      <!-- Signup Tab -->
+      <div id="tab-signup" class="tab-content">
+        <p class="tab-desc">Create a new portfolio account.</p>
+        <form id="signup-form">
+          <input type="text" id="signup-name" placeholder="Your name" required>
+          <input type="email" id="signup-email" placeholder="you@example.com" required>
+          <div class="terms">
+            <p><strong>Terms and Conditions</strong></p>
+            <p>This AI agent provides financial data from your Ghostfolio portfolio. It does not provide financial advice. All investment decisions are your own responsibility.</p>
+            <label class="checkbox-label">
+              <input type="checkbox" id="signup-agree">
+              I understand that if I lose my security token, I cannot recover my account.
+            </label>
+          </div>
+          <button type="submit" class="btn-primary" id="signup-btn" disabled>Create Account</button>
+        </form>
+        <div id="signup-error" class="error hidden"></div>
+      </div>
+
+      <!-- Token Display (after signup) -->
+      <div id="token-display" class="tab-content">
+        <div class="success-msg">Account created successfully!</div>
+        <p id="signup-info"></p>
+        <div class="warning-msg">Save your credentials below. You will need them to log in again.</div>
+        <p><strong>Your Security Token:</strong></p>
+        <div class="token-box">
+          <code id="token-value"></code>
+          <button class="btn-copy" id="copy-token-btn" title="Copy token">Copy</button>
+        </div>
+        <button class="btn-primary" id="continue-btn">Continue to Chat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Chat View ──────────────────────────────────────────── -->
+  <div id="chat-view" class="view hidden">
+    <aside class="sidebar">
+      <h2>Settings</h2>
+      <label for="model-select">Model</label>
+      <select id="model-select"></select>
+      <div class="divider"></div>
+      <div id="user-info">
+        <p class="caption" id="user-name-display"></p>
+        <p class="caption" id="user-email-display"></p>
+        <p class="caption" id="user-token-display"></p>
+      </div>
+      <button class="btn-logout" id="logout-btn">Logout</button>
+    </aside>
+
+    <main class="chat-main">
+      <div class="chat-header">
+        <h1>🏦 Ghostfolio AI Agent</h1>
+      </div>
+      <div id="messages" class="messages"></div>
+      <form id="chat-form" class="chat-input-bar">
+        <input type="text" id="chat-input" placeholder="Ask about your portfolio..." autocomplete="off">
+        <button type="submit" class="btn-send" id="send-btn">Send</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/models.js"></script>
+  <script src="/static/js/auth.js"></script>
+  <script src="/static/js/chat.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

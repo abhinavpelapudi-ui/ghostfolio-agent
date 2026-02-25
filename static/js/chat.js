@@ -1,0 +1,175 @@
+/**
+ * Chat view logic — messages, sending, rendering.
+ */
+const TOOL_ICONS = {
+  portfolio_summary: '📊', portfolio_performance: '📈',
+  holding_detail: '🔍', transactions: '💸',
+  dividend_history: '💰', symbol_search: '🔎',
+  market_sentiment: '⚖️', add_trade: '➕',
+};
+
+const chat = {
+  history: [],   // [{role, content}]
+  sending: false,
+
+  init() {
+    const session = auth.getSession();
+    // Update sidebar
+    const name = session?.name || '';
+    const email = session?.email || '';
+    const token = session?.token || '';
+    document.getElementById('user-name-display').textContent = name ? `User: ${name}` : '';
+    document.getElementById('user-email-display').textContent = email ? `Email: ${email}` : '';
+    document.getElementById('user-token-display').textContent = token ? `Token: ...${token.slice(-8)}` : '';
+
+    // Welcome message
+    const display = name || email || 'there';
+    chat._appendWelcome(display);
+
+    // Chat form
+    document.getElementById('chat-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      chat.send();
+    });
+
+    // Logout
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      auth.clearSession();
+      chat.history = [];
+      app.showAuth();
+    });
+  },
+
+  async send() {
+    if (chat.sending) return;
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    if (!message) return;
+
+    const session = auth.getSession();
+    if (!session) { app.showAuth(); return; }
+
+    input.value = '';
+    chat.sending = true;
+    document.getElementById('send-btn').disabled = true;
+
+    // Show user message
+    chat.history.push({ role: 'user', content: message });
+    chat._renderMessage('user', message);
+
+    // Show typing indicator
+    const typing = chat._showTyping();
+
+    try {
+      // Send last 18 messages for context
+      const historySlice = chat.history.slice(-18);
+      const data = await api.send(message, models.getSelected(), historySlice, session.token);
+
+      typing.remove();
+      chat.history.push({ role: 'assistant', content: data.response });
+      chat._renderAssistant(data.response, data.tools_called, data.cost_usd);
+    } catch (err) {
+      typing.remove();
+      const errMsg = `Sorry, something went wrong: ${err.message}`;
+      chat._renderMessage('assistant', errMsg);
+      if (err.message.includes('401') || err.message.includes('Invalid')) {
+        auth.clearSession();
+        setTimeout(() => app.showAuth(), 2000);
+      }
+    } finally {
+      chat.sending = false;
+      document.getElementById('send-btn').disabled = false;
+      input.focus();
+    }
+  },
+
+  _appendWelcome(displayName) {
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'message welcome';
+    div.innerHTML = chat._md(
+      `**Welcome, ${displayName}!** Your portfolio is ready.\n\n` +
+      'Try asking:\n' +
+      '- "I bought 10 shares of AAPL at $230"\n' +
+      '- "Show me my portfolio summary"\n' +
+      '- "How has my portfolio performed?"\n' +
+      '- "Search for Apple stock"'
+    );
+    container.appendChild(div);
+  },
+
+  _renderMessage(role, content) {
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = `message ${role}`;
+    div.innerHTML = role === 'user' ? chat._escapeHtml(content) : chat._md(content);
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  },
+
+  _renderAssistant(content, tools, cost) {
+    const container = document.getElementById('messages');
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message assistant';
+    wrapper.innerHTML = chat._md(content);
+
+    if (tools && tools.length > 0) {
+      const bar = document.createElement('div');
+      bar.className = 'tools-bar';
+      tools.forEach((t) => {
+        const pill = document.createElement('span');
+        pill.className = 'tool-pill';
+        pill.textContent = `${TOOL_ICONS[t] || '🔧'} ${t}`;
+        bar.appendChild(pill);
+      });
+      wrapper.appendChild(bar);
+    }
+
+    if (cost && cost > 0) {
+      const costEl = document.createElement('div');
+      costEl.className = 'cost-label';
+      costEl.textContent = `Cost: $${cost.toFixed(6)}`;
+      wrapper.appendChild(costEl);
+    }
+
+    container.appendChild(wrapper);
+    container.scrollTop = container.scrollHeight;
+  },
+
+  _showTyping() {
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'typing-indicator';
+    div.innerHTML = '<span></span><span></span><span></span>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div;
+  },
+
+  /** Simple markdown → HTML */
+  _md(text) {
+    let html = chat._escapeHtml(text);
+    // Code blocks
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Bold
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Unordered list items
+    html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+    // Paragraphs (double newline)
+    html = html.replace(/\n\n/g, '</p><p>');
+    // Single newlines (not inside pre)
+    html = html.replace(/\n/g, '<br>');
+    return `<p>${html}</p>`;
+  },
+
+  _escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+};
