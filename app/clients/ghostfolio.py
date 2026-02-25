@@ -1,7 +1,6 @@
 """Async HTTP client for the Ghostfolio REST API."""
 
 import logging
-import secrets
 from contextlib import contextmanager
 from contextvars import ContextVar
 

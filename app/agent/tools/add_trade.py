@@ -85,7 +85,10 @@ async def add_trade(
                 "date": date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                 "account": accounts[0].get("name", ""),
             },
-            "message": f"Successfully added {trade_type} of {quantity} {symbol.upper()} at ${unit_price} (total: ${total_cost:.2f})",
+            "message": (
+                f"Successfully added {trade_type} of {quantity} "
+                f"{symbol.upper()} at ${unit_price} (total: ${total_cost:.2f})"
+            ),
         }, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})

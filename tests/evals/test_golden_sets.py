@@ -8,13 +8,12 @@ Usage:
 """
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 import yaml
 
-from tests.evals.evaluator import EvalResult, evaluate_case
+from tests.evals.evaluator import evaluate_case
 
 GOLDEN_DATA_PATH = Path(__file__).parent / "golden_data.yaml"
 

@@ -27,9 +27,13 @@ async def test_groundedness_pass():
     from tests.evals.llm_judge import judge_groundedness
 
     tool_output = [
-        '{"total_value": 125000.50, "holdings_count": 4, "top_holdings": [{"symbol": "VOO", "name": "Vanguard S&P 500 ETF", "value": 50000}]}'
+        '{"total_value": 125000.50, "holdings_count": 4, '
+        '"top_holdings": [{"symbol": "VOO", "name": "Vanguard S&P 500 ETF", "value": 50000}]}'
     ]
-    response = "Your portfolio is worth $125,000.50 with 4 holdings. Your top holding is VOO (Vanguard S&P 500 ETF) valued at $50,000."
+    response = (
+        "Your portfolio is worth $125,000.50 with 4 holdings. "
+        "Your top holding is VOO (Vanguard S&P 500 ETF) valued at $50,000."
+    )
 
     result = await judge_groundedness(response, tool_output)
     assert result.groundedness_score >= 0.8
@@ -57,7 +61,9 @@ async def test_rubric_high_quality():
 
     query = "Show me my portfolio summary"
     tool_output = [
-        '{"total_value": 125000.50, "holdings_count": 4, "top_holdings": [{"symbol": "VOO", "value": 50000, "weight_pct": 40.0}], "net_performance_pct": 25.0}'
+        '{"total_value": 125000.50, "holdings_count": 4, '
+        '"top_holdings": [{"symbol": "VOO", "value": 50000, "weight_pct": 40.0}], '
+        '"net_performance_pct": 25.0}'
     ]
     response = """Here's your portfolio summary:
 
