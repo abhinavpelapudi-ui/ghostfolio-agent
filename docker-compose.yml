@@ -92,7 +92,6 @@ services:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
-      - CHAINLIT_AUTH_SECRET=${CHAINLIT_AUTH_SECRET}
     depends_on:
       ghostfolio:
         condition: service_healthy

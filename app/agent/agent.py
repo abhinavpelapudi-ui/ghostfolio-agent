@@ -53,6 +53,7 @@ async def run_agent(
     command: str,
     model_id: str = DEFAULT_MODEL_ID,
     ghostfolio_client: GhostfolioClient | None = None,
+    history: list | None = None,
 ) -> dict:
     trace_id = str(uuid.uuid4())
     spec = get_model_spec(model_id)
@@ -71,7 +72,7 @@ async def run_agent(
     with use_client(client_to_use):
         try:
             result = await agent.ainvoke(
-                {"messages": [HumanMessage(content=command)]},
+                {"messages": (history or []) + [HumanMessage(content=command)]},
                 config=config,
             )
         except Exception as e:
