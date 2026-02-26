@@ -114,6 +114,14 @@ class GhostfolioClient:
     async def get_accounts(self) -> dict:
         return await self._get("/api/v1/account")
 
+    async def create_account(self, name: str = "Default", currency: str = "USD") -> dict:
+        return await self._post("/api/v1/account", {
+            "name": name,
+            "currency": currency,
+            "isExcluded": False,
+            "platformId": None,
+        })
+
     async def close(self) -> None:
         await self._client.aclose()
 

@@ -49,12 +49,16 @@ async def add_trade(
         else:
             trade_date = f"{date}T00:00:00.000Z"
 
-        # Get the user's first account
-        accounts_data = await get_client().get_accounts()
+        # Get the user's first account (auto-create if none exist)
+        client = get_client()
+        accounts_data = await client.get_accounts()
         accounts = accounts_data.get("accounts", [])
         if not accounts:
-            return json.dumps({"error": "No accounts found. Please create an account in Ghostfolio first."})
-        account_id = accounts[0]["id"]
+            new_account = await client.create_account(name="Default", currency=currency.upper())
+            account_id = new_account["id"]
+            accounts = [new_account]
+        else:
+            account_id = accounts[0]["id"]
 
         order = {
             "accountId": account_id,
