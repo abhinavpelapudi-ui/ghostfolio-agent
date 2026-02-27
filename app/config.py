@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # LangSmith
     langchain_api_key: str = ""
-    langchain_tracing_v2: str = "true"
+    langchain_tracing_v2: str = "false"
     langchain_project: str = "ghostfolio-agent"
 
     # Langfuse

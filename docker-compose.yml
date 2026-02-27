@@ -51,28 +51,6 @@ services:
       timeout: 5s
       retries: 5
 
-  agent:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:8000:8000"
-    environment:
-      - GHOSTFOLIO_URL=http://ghostfolio:3333
-      - GHOSTFOLIO_ACCESS_TOKEN=${GHOSTFOLIO_ACCESS_TOKEN}
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY:-}
-      - LANGCHAIN_TRACING_V2=true
-      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-ghostfolio-agent}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
-      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
-    depends_on:
-      ghostfolio:
-        condition: service_healthy
-
   chat:
     build:
       context: .
@@ -87,7 +65,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY:-}
-      - LANGCHAIN_TRACING_V2=true
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
       - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-ghostfolio-agent}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
