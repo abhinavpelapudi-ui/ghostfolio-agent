@@ -1,6 +1,6 @@
 """Skill-based intent classification for the finance agent."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

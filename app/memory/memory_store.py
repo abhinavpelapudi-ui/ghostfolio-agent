@@ -100,7 +100,7 @@ class MemoryStore:
 
         lessons = self.get_relevant_lessons(user_token, query)
         if lessons:
-            lesson_lines = [f"- {l}" for l in lessons]
+            lesson_lines = [f"- {lesson}" for lesson in lessons]
             parts.append("Lessons from previous feedback:\n" + "\n".join(lesson_lines))
 
         cache = self.fact_cache.get(user_token, {})
