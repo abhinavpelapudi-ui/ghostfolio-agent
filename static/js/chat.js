@@ -54,6 +54,7 @@ const chat = {
       auth.clearSession();
       chat.history = [];
       localStorage.removeItem('gf_chat_history');
+      document.getElementById('messages').innerHTML = '';
       app.showAuth();
     });
   },
