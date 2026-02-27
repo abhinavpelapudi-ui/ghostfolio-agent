@@ -63,7 +63,7 @@ SKILLS: dict[str, Skill] = {
         name="risk_assessment",
         display_name="Risk Assessment",
         keywords=(
-            "risk", "diversification", "concentration", "sector",
+            "risk", "diversification", "diversified", "concentration", "sector",
             "geographic", "exposure", "safe", "volatile", "health",
         ),
         relevant_tools=("market_sentiment", "portfolio_summary"),
