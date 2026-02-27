@@ -50,5 +50,5 @@ jobs:
           GHOSTFOLIO_ACCESS_TOKEN: ${{ secrets.GHOSTFOLIO_ACCESS_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
-          LANGCHAIN_TRACING_V2: "true"
+          LANGCHAIN_TRACING_V2: ${{ secrets.LANGCHAIN_API_KEY && 'true' || 'false' }}
           LANGCHAIN_PROJECT: ghostfolio-agent-evals
