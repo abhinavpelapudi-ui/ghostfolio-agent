@@ -32,6 +32,18 @@ const chat = {
       chat.send();
     });
 
+    // Sidebar toggle (mobile)
+    const sidebar = document.querySelector('.sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    document.getElementById('menu-toggle').addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      backdrop.classList.toggle('open');
+    });
+    backdrop.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      backdrop.classList.remove('open');
+    });
+
     // Logout
     document.getElementById('logout-btn').addEventListener('click', () => {
       auth.clearSession();

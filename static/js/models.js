@@ -18,7 +18,8 @@ const models = {
         if (m.model_id === data.default) opt.selected = true;
         select.appendChild(opt);
       });
-    } catch {
+    } catch (e) {
+      console.error('Failed to load models:', e);
       select.innerHTML = '<option>Failed to load models</option>';
     }
   },

@@ -294,9 +294,39 @@ input:focus { border-color: var(--primary); }
 .chat-header {
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .chat-header h1 { font-size: 1.2rem; }
+
+/* Hamburger menu — mobile only */
+.btn-menu {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-menu span {
+  width: 20px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 1px;
+}
+
+/* Sidebar backdrop — mobile only */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+}
 
 .messages {
   flex: 1;
@@ -458,6 +488,7 @@ input:focus { border-color: var(--primary); }
 
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 768px) {
+  .btn-menu { display: flex; }
   .sidebar {
     position: fixed;
     left: -280px;
@@ -467,6 +498,7 @@ input:focus { border-color: var(--primary); }
     transition: left 0.3s;
   }
   .sidebar.open { left: 0; }
+  .sidebar-backdrop.open { display: block; }
   .message { max-width: 95%; }
   .auth-card { margin: 16px; padding: 24px; }
 }
