@@ -2,19 +2,22 @@
 
 import logging
 import uuid
+from contextvars import ContextVar
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 from app.agent.models import DEFAULT_MODEL_ID, ModelSpec, get_model_spec
 from app.agent.prompts import SYSTEM_PROMPT
+from app.agent.skills import Skill, classify_intent
 from app.agent.tools import ALL_TOOLS
 from app.clients.ghostfolio import GhostfolioClient, _default_client, use_client
 from app.config import settings
+from app.memory.memory_store import memory_store
 from app.tracing.cost_tracker import cost_tracker
 from app.tracing.setup import get_langfuse_handler
 from app.verification.disclaimer_injection import inject_disclaimer
@@ -23,6 +26,30 @@ from app.verification.numerical_consistency import check_numerical_consistency
 from app.verification.risk_threshold import check_risk_thresholds
 
 logger = logging.getLogger(__name__)
+
+# ── Per-request context for dynamic prompt ──────────────────────────
+_current_skill: ContextVar[Skill | None] = ContextVar("current_skill", default=None)
+_current_memory_context: ContextVar[str] = ContextVar("memory_context", default="")
+
+
+def _build_dynamic_prompt(state: dict) -> list:
+    """Build system prompt dynamically based on active skill and memory context."""
+    parts = [SYSTEM_PROMPT]
+
+    skill = _current_skill.get()
+    if skill:
+        parts.append(
+            f"\n\nCURRENT TASK CONTEXT ({skill.display_name}):\n"
+            f"{skill.prompt_addon}\n"
+            f"Most relevant tools for this request: {', '.join(skill.relevant_tools)}. "
+            "You may use other tools if needed, but prefer the ones listed above."
+        )
+
+    memory_ctx = _current_memory_context.get()
+    if memory_ctx:
+        parts.append(f"\n\nUSER CONTEXT:\n{memory_ctx}")
+
+    return [SystemMessage(content="\n".join(parts))] + state["messages"]
 
 
 def _create_llm(spec: ModelSpec) -> BaseChatModel:
@@ -45,7 +72,7 @@ def get_agent(model_id: str = DEFAULT_MODEL_ID):
         return _agent_cache[model_id]
     spec = get_model_spec(model_id)
     llm = _create_llm(spec)
-    agent = create_react_agent(llm, ALL_TOOLS, prompt=SYSTEM_PROMPT)
+    agent = create_react_agent(llm, ALL_TOOLS, prompt=_build_dynamic_prompt)
     _agent_cache[model_id] = agent
     return agent
 
@@ -55,10 +82,21 @@ async def run_agent(
     model_id: str = DEFAULT_MODEL_ID,
     ghostfolio_client: GhostfolioClient | None = None,
     history: list | None = None,
+    user_token: str = "",
 ) -> dict:
     trace_id = str(uuid.uuid4())
     spec = get_model_spec(model_id)
     agent = get_agent(model_id)
+
+    # Skill classification
+    skill = classify_intent(command)
+
+    # Memory context
+    memory_ctx = memory_store.build_context(user_token, command) if user_token else ""
+
+    # Set per-request context
+    skill_tok = _current_skill.set(skill)
+    memory_tok = _current_memory_context.set(memory_ctx)
 
     callbacks = []
     handler = get_langfuse_handler()
@@ -70,23 +108,28 @@ async def run_agent(
         config["callbacks"] = callbacks
 
     client_to_use = ghostfolio_client or _default_client
-    with use_client(client_to_use):
-        try:
-            result = await agent.ainvoke(
-                {"messages": (history or []) + [HumanMessage(content=command)]},
-                config=config,
-            )
-        except Exception as e:
-            logger.error("Agent execution failed: %s", e)
-            return {
-                "response": "Sorry, I encountered an error processing your request. Please try again.",
-                "trace_id": trace_id,
-                "tools_called": [],
-                "cost_usd": 0,
-                "model": spec.api_model_name,
-                "error": str(e),
-                "verification": {},
-            }
+    try:
+        with use_client(client_to_use):
+            try:
+                result = await agent.ainvoke(
+                    {"messages": (history or []) + [HumanMessage(content=command)]},
+                    config=config,
+                )
+            except Exception as e:
+                logger.error("Agent execution failed: %s", e)
+                return {
+                    "response": "Sorry, I encountered an error processing your request. Please try again.",
+                    "trace_id": trace_id,
+                    "tools_called": [],
+                    "cost_usd": 0,
+                    "model": spec.api_model_name,
+                    "skill_used": skill.name,
+                    "error": str(e),
+                    "verification": {},
+                }
+    finally:
+        _current_skill.reset(skill_tok)
+        _current_memory_context.reset(memory_tok)
 
     messages = result.get("messages", [])
     final_message = ""
@@ -122,12 +165,20 @@ async def run_agent(
         operation="finance_query",
     )
 
+    # Memory: extract preferences and cache facts
+    if user_token:
+        memory_store.extract_preferences(user_token, command, tools_called)
+        for i, tool_name in enumerate(tools_called):
+            if i < len(tool_outputs):
+                memory_store.cache_fact(user_token, tool_name, tool_outputs[i])
+
     return {
         "response": final_message,
         "trace_id": trace_id,
         "tools_called": tools_called,
         "cost_usd": round(cost, 6),
         "model": spec.api_model_name,
+        "skill_used": skill.name,
         "verification": {
             "numerical_consistent": consistency_result.get("consistent", True),
             "hallucination_detected": hallucination_result.get("detected", False),

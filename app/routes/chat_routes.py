@@ -9,6 +9,7 @@ from app.agent.agent import run_agent
 from app.agent.models import DEFAULT_MODEL_ID, SUPPORTED_MODELS
 from app.clients.ghostfolio import GhostfolioClient, create_anonymous_user
 from app.config import settings
+from app.memory.memory_store import memory_store
 from app.models.schemas import (
     ChatFeedbackRequest,
     ChatLoginRequest,
@@ -17,6 +18,7 @@ from app.models.schemas import (
     ChatSendResponse,
     ChatSignupRequest,
     ChatSignupResponse,
+    PreferenceRequest,
 )
 from app.tracing.feedback_store import feedback_store
 
@@ -76,6 +78,7 @@ async def chat_send(
             model_id=request.model_id or DEFAULT_MODEL_ID,
             ghostfolio_client=client,
             history=lc_history,
+            user_token=x_ghostfolio_token,
         )
     finally:
         await client.close()
@@ -86,6 +89,7 @@ async def chat_send(
         cost_usd=result.get("cost_usd", 0),
         model=result.get("model", ""),
         trace_id=result.get("trace_id", ""),
+        skill_used=result.get("skill_used", ""),
     )
 
 
@@ -96,6 +100,18 @@ async def chat_feedback(
 ):
     """Record thumbs up/down feedback for a response."""
     feedback_store.record(trace_id=request.trace_id, rating=request.rating)
+
+    # Close the feedback loop: store lesson on thumbs-down
+    if request.rating == "down" and request.query:
+        memory_store.add_lesson(
+            user_token=x_ghostfolio_token,
+            query_pattern=request.query,
+            lesson=(
+                f"A similar query ('{request.query[:80]}') received negative feedback. "
+                "Take extra care with accuracy and completeness."
+            ),
+        )
+
     return {"success": True}
 
 
@@ -103,6 +119,24 @@ async def chat_feedback(
 async def chat_feedback_summary():
     """Get feedback summary for observability."""
     return feedback_store.get_summary()
+
+
+@router.get("/preferences")
+async def get_preferences(
+    x_ghostfolio_token: str = Header(..., alias="X-Ghostfolio-Token"),
+):
+    """Get stored user preferences."""
+    return memory_store.get_preferences(x_ghostfolio_token)
+
+
+@router.put("/preferences")
+async def set_preference(
+    request: PreferenceRequest,
+    x_ghostfolio_token: str = Header(..., alias="X-Ghostfolio-Token"),
+):
+    """Set a user preference explicitly."""
+    memory_store.set_preference(x_ghostfolio_token, request.key, request.value)
+    return {"success": True}
 
 
 @router.get("/models")

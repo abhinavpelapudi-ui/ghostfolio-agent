@@ -62,8 +62,15 @@ class ChatSendResponse(BaseModel):
     cost_usd: float = 0.0
     model: str = ""
     trace_id: str = ""
+    skill_used: str = ""
 
 
 class ChatFeedbackRequest(BaseModel):
     trace_id: str = Field(..., min_length=1, description="Trace ID of the response")
     rating: str = Field(..., pattern="^(up|down)$", description="Thumbs up or down")
+    query: str = Field(default="", max_length=500, description="Original user query for learning")
+
+
+class PreferenceRequest(BaseModel):
+    key: str = Field(..., min_length=1, max_length=50)
+    value: str = Field(..., min_length=1, max_length=200)

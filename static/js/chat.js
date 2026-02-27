@@ -88,10 +88,11 @@ const chat = {
       typing.remove();
       chat.history.push({
         role: 'assistant', content: data.response,
-        tools: data.tools_called, cost: data.cost_usd, traceId: data.trace_id,
+        tools: data.tools_called, cost: data.cost_usd,
+        traceId: data.trace_id, skillUsed: data.skill_used,
       });
       chat._saveHistory();
-      chat._renderAssistant(data.response, data.tools_called, data.cost_usd, data.trace_id);
+      chat._renderAssistant(data.response, data.tools_called, data.cost_usd, data.trace_id, data.skill_used);
     } catch (err) {
       typing.remove();
       const errMsg = `Sorry, something went wrong: ${err.message}`;
@@ -131,21 +132,29 @@ const chat = {
     container.scrollTop = container.scrollHeight;
   },
 
-  _renderAssistant(content, tools, cost, traceId) {
+  _renderAssistant(content, tools, cost, traceId, skillUsed) {
     const container = document.getElementById('messages');
     const wrapper = document.createElement('div');
     wrapper.className = 'message assistant';
     wrapper.innerHTML = chat._md(content);
 
-    if (tools && tools.length > 0) {
+    if ((tools && tools.length > 0) || skillUsed) {
       const bar = document.createElement('div');
       bar.className = 'tools-bar';
-      tools.forEach((t) => {
-        const pill = document.createElement('span');
-        pill.className = 'tool-pill';
-        pill.textContent = `${TOOL_ICONS[t] || '🔧'} ${t}`;
-        bar.appendChild(pill);
-      });
+      if (skillUsed) {
+        const skillPill = document.createElement('span');
+        skillPill.className = 'tool-pill skill-pill';
+        skillPill.textContent = skillUsed.replace(/_/g, ' ');
+        bar.appendChild(skillPill);
+      }
+      if (tools) {
+        tools.forEach((t) => {
+          const pill = document.createElement('span');
+          pill.className = 'tool-pill';
+          pill.textContent = `${TOOL_ICONS[t] || '🔧'} ${t}`;
+          bar.appendChild(pill);
+        });
+      }
       wrapper.appendChild(bar);
     }
 
@@ -187,7 +196,10 @@ const chat = {
     btn.classList.add('active');
     try {
       const session = auth.getSession();
-      if (session) await api.feedback(traceId, rating, session.token);
+      // Find the user query that preceded this assistant response
+      const idx = chat.history.findIndex((m) => m.traceId === traceId);
+      const query = idx > 0 ? chat.history[idx - 1].content : '';
+      if (session) await api.feedback(traceId, rating, session.token, query);
     } catch (e) {
       console.error('Feedback failed:', e);
     }
@@ -241,7 +253,7 @@ const chat = {
         if (item.role === 'user') {
           chat._renderMessage('user', item.content);
         } else if (item.role === 'assistant') {
-          chat._renderAssistant(item.content, item.tools, item.cost, item.traceId);
+          chat._renderAssistant(item.content, item.tools, item.cost, item.traceId, item.skillUsed);
         }
       }
     } catch (e) { /* corrupt data — start fresh */ }

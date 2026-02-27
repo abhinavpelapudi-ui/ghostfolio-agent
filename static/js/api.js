@@ -44,14 +44,14 @@ const api = {
     return res.json();
   },
 
-  async feedback(traceId, rating, token) {
+  async feedback(traceId, rating, token, query = '') {
     const res = await fetch('/chat/feedback', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Ghostfolio-Token': token,
       },
-      body: JSON.stringify({ trace_id: traceId, rating }),
+      body: JSON.stringify({ trace_id: traceId, rating, query }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
