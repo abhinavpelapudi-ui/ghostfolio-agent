@@ -20,6 +20,7 @@ from app.tracing.setup import get_langfuse_handler
 from app.verification.disclaimer_injection import inject_disclaimer
 from app.verification.hallucination_detection import check_hallucination
 from app.verification.numerical_consistency import check_numerical_consistency
+from app.verification.risk_threshold import check_risk_thresholds
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,9 @@ async def run_agent(
     # Verification pipeline
     consistency_result = check_numerical_consistency(final_message, tool_outputs)
     hallucination_result = check_hallucination(final_message, tool_outputs)
+    risk_warnings = check_risk_thresholds(tool_outputs)
+    if risk_warnings:
+        final_message += "\n\n" + "\n".join(f"Warning: {w}" for w in risk_warnings)
     final_message = inject_disclaimer(final_message)
 
     cost = cost_tracker.record(
@@ -127,6 +131,7 @@ async def run_agent(
         "verification": {
             "numerical_consistent": consistency_result.get("consistent", True),
             "hallucination_detected": hallucination_result.get("detected", False),
+            "risk_warnings": risk_warnings,
             "disclaimer_injected": True,
         },
     }

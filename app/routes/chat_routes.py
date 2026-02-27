@@ -10,6 +10,7 @@ from app.agent.models import DEFAULT_MODEL_ID, SUPPORTED_MODELS
 from app.clients.ghostfolio import GhostfolioClient, create_anonymous_user
 from app.config import settings
 from app.models.schemas import (
+    ChatFeedbackRequest,
     ChatLoginRequest,
     ChatLoginResponse,
     ChatSendRequest,
@@ -17,6 +18,7 @@ from app.models.schemas import (
     ChatSignupRequest,
     ChatSignupResponse,
 )
+from app.tracing.feedback_store import feedback_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -83,7 +85,24 @@ async def chat_send(
         tools_called=result.get("tools_called", []),
         cost_usd=result.get("cost_usd", 0),
         model=result.get("model", ""),
+        trace_id=result.get("trace_id", ""),
     )
+
+
+@router.post("/feedback")
+async def chat_feedback(
+    request: ChatFeedbackRequest,
+    x_ghostfolio_token: str = Header(..., alias="X-Ghostfolio-Token"),
+):
+    """Record thumbs up/down feedback for a response."""
+    feedback_store.record(trace_id=request.trace_id, rating=request.rating)
+    return {"success": True}
+
+
+@router.get("/feedback/summary")
+async def chat_feedback_summary():
+    """Get feedback summary for observability."""
+    return feedback_store.get_summary()
 
 
 @router.get("/models")

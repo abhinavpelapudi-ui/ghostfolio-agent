@@ -44,6 +44,22 @@ const api = {
     return res.json();
   },
 
+  async feedback(traceId, rating, token) {
+    const res = await fetch('/chat/feedback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Ghostfolio-Token': token,
+      },
+      body: JSON.stringify({ trace_id: traceId, rating }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Feedback failed');
+    }
+    return res.json();
+  },
+
   async getModels() {
     const res = await fetch('/chat/models');
     if (!res.ok) throw new Error('Failed to load models');

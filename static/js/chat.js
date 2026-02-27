@@ -9,7 +9,7 @@ const TOOL_ICONS = {
 };
 
 const chat = {
-  history: [],   // [{role, content}]
+  history: [],   // [{role, content, tools?, cost?, traceId?}]
   sending: false,
 
   init() {
@@ -22,9 +22,14 @@ const chat = {
     document.getElementById('user-email-display').textContent = email ? `Email: ${email}` : '';
     document.getElementById('user-token-display').textContent = token ? `Token: ...${token.slice(-8)}` : '';
 
-    // Welcome message
-    const display = name || email || 'there';
-    chat._appendWelcome(display);
+    // Load persisted history and re-render
+    chat._loadHistory();
+
+    // Welcome message (only if no history)
+    if (chat.history.length === 0) {
+      const display = name || email || 'there';
+      chat._appendWelcome(display);
+    }
 
     // Chat form
     document.getElementById('chat-form').addEventListener('submit', (e) => {
@@ -48,6 +53,7 @@ const chat = {
     document.getElementById('logout-btn').addEventListener('click', () => {
       auth.clearSession();
       chat.history = [];
+      localStorage.removeItem('gf_chat_history');
       app.showAuth();
     });
   },
@@ -67,6 +73,7 @@ const chat = {
 
     // Show user message
     chat.history.push({ role: 'user', content: message });
+    chat._saveHistory();
     chat._renderMessage('user', message);
 
     // Show typing indicator
@@ -78,8 +85,12 @@ const chat = {
       const data = await api.send(message, models.getSelected(), historySlice, session.token);
 
       typing.remove();
-      chat.history.push({ role: 'assistant', content: data.response });
-      chat._renderAssistant(data.response, data.tools_called, data.cost_usd);
+      chat.history.push({
+        role: 'assistant', content: data.response,
+        tools: data.tools_called, cost: data.cost_usd, traceId: data.trace_id,
+      });
+      chat._saveHistory();
+      chat._renderAssistant(data.response, data.tools_called, data.cost_usd, data.trace_id);
     } catch (err) {
       typing.remove();
       const errMsg = `Sorry, something went wrong: ${err.message}`;
@@ -119,7 +130,7 @@ const chat = {
     container.scrollTop = container.scrollHeight;
   },
 
-  _renderAssistant(content, tools, cost) {
+  _renderAssistant(content, tools, cost, traceId) {
     const container = document.getElementById('messages');
     const wrapper = document.createElement('div');
     wrapper.className = 'message assistant';
@@ -137,15 +148,48 @@ const chat = {
       wrapper.appendChild(bar);
     }
 
+    // Meta row: cost + feedback
+    const meta = document.createElement('div');
+    meta.className = 'meta-bar';
+
     if (cost && cost > 0) {
-      const costEl = document.createElement('div');
+      const costEl = document.createElement('span');
       costEl.className = 'cost-label';
       costEl.textContent = `Cost: $${cost.toFixed(6)}`;
-      wrapper.appendChild(costEl);
+      meta.appendChild(costEl);
     }
 
+    if (traceId) {
+      const fb = document.createElement('span');
+      fb.className = 'feedback-bar';
+      fb.innerHTML =
+        `<button class="btn-feedback" data-rating="up" title="Helpful">&#x1F44D;</button>` +
+        `<button class="btn-feedback" data-rating="down" title="Not helpful">&#x1F44E;</button>`;
+      fb.querySelectorAll('.btn-feedback').forEach((btn) => {
+        btn.addEventListener('click', () => chat._sendFeedback(btn, traceId));
+      });
+      meta.appendChild(fb);
+    }
+
+    wrapper.appendChild(meta);
     container.appendChild(wrapper);
     container.scrollTop = container.scrollHeight;
+  },
+
+  async _sendFeedback(btn, traceId) {
+    const bar = btn.parentElement;
+    const rating = btn.dataset.rating;
+    bar.querySelectorAll('.btn-feedback').forEach((b) => {
+      b.disabled = true;
+      b.classList.remove('active');
+    });
+    btn.classList.add('active');
+    try {
+      const session = auth.getSession();
+      if (session) await api.feedback(traceId, rating, session.token);
+    } catch (e) {
+      console.error('Feedback failed:', e);
+    }
   },
 
   _showTyping() {
@@ -177,6 +221,29 @@ const chat = {
     // Single newlines (not inside pre)
     html = html.replace(/\n/g, '<br>');
     return `<p>${html}</p>`;
+  },
+
+  _saveHistory() {
+    try {
+      localStorage.setItem('gf_chat_history', JSON.stringify(chat.history));
+    } catch (e) { /* quota exceeded — ignore */ }
+  },
+
+  _loadHistory() {
+    try {
+      const raw = localStorage.getItem('gf_chat_history');
+      if (!raw) return;
+      const items = JSON.parse(raw);
+      if (!Array.isArray(items)) return;
+      chat.history = items;
+      for (const item of items) {
+        if (item.role === 'user') {
+          chat._renderMessage('user', item.content);
+        } else if (item.role === 'assistant') {
+          chat._renderAssistant(item.content, item.tools, item.cost, item.traceId);
+        }
+      }
+    } catch (e) { /* corrupt data — start fresh */ }
   },
 
   _escapeHtml(text) {

@@ -61,3 +61,9 @@ class ChatSendResponse(BaseModel):
     tools_called: list[str] = []
     cost_usd: float = 0.0
     model: str = ""
+    trace_id: str = ""
+
+
+class ChatFeedbackRequest(BaseModel):
+    trace_id: str = Field(..., min_length=1, description="Trace ID of the response")
+    rating: str = Field(..., pattern="^(up|down)$", description="Thumbs up or down")
