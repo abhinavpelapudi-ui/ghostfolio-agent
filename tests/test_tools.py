@@ -65,11 +65,26 @@ async def test_market_sentiment_tool(test_client):
 
 
 @pytest.mark.asyncio
-async def test_add_trade_tool(test_client):
+async def test_add_trade_preview(test_client):
+    """Phase 1: calling without confirmed=True returns a preview."""
     from app.agent.tools.add_trade import add_trade
 
     result = json.loads(await add_trade.ainvoke({
         "symbol": "TSLA", "quantity": 5, "unit_price": 250,
+    }))
+    assert result["pending_confirmation"] is True
+    assert result["preview"]["symbol"] == "TSLA"
+    assert result["preview"]["quantity"] == 5
+    assert "confirm" in result["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_add_trade_confirmed(test_client):
+    """Phase 2: calling with confirmed=True executes the trade."""
+    from app.agent.tools.add_trade import add_trade
+
+    result = json.loads(await add_trade.ainvoke({
+        "symbol": "TSLA", "quantity": 5, "unit_price": 250, "confirmed": True,
     }))
     assert result["success"] is True
     assert result["trade"]["symbol"] == "TSLA"

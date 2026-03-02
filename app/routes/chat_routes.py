@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.agent import run_agent
 from app.agent.models import DEFAULT_MODEL_ID, SUPPORTED_MODELS
-from app.clients.ghostfolio import GhostfolioClient, create_anonymous_user
+from app.clients.ghostfolio import GhostfolioClient, RateLimitError, create_anonymous_user
 from app.config import settings
 from app.memory.memory_store import memory_store
 from app.models.schemas import (
@@ -80,8 +80,27 @@ async def chat_send(
             history=lc_history,
             user_token=x_ghostfolio_token,
         )
+    except RateLimitError as e:
+        await client.close()
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limited. Please retry after {e.retry_after} seconds.",
+            headers={"Retry-After": str(e.retry_after)},
+        ) from e
     finally:
         await client.close()
+
+    # Forward rate-limit or auth errors detected during agent execution
+    error_type = result.get("error", "")
+    if error_type == "rate_limited":
+        retry_after = result.get("retry_after", 30)
+        raise HTTPException(
+            status_code=429,
+            detail=result["response"],
+            headers={"Retry-After": str(retry_after)},
+        )
+    if error_type == "auth_expired":
+        raise HTTPException(status_code=401, detail=result["response"])
 
     return ChatSendResponse(
         response=result["response"],
@@ -91,6 +110,21 @@ async def chat_send(
         trace_id=result.get("trace_id", ""),
         skill_used=result.get("skill_used", ""),
     )
+
+
+@router.post("/validate")
+async def chat_validate(
+    x_ghostfolio_token: str = Header(..., alias="X-Ghostfolio-Token"),
+):
+    """Validate that a stored token is still valid (called on app load)."""
+    client = GhostfolioClient(access_token=x_ghostfolio_token)
+    try:
+        await client._authenticate()
+        return {"valid": True}
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token expired or invalid")
+    finally:
+        await client.close()
 
 
 @router.post("/feedback")

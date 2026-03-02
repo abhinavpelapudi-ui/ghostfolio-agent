@@ -1,6 +1,25 @@
 /**
  * API wrapper for chat backend routes.
  */
+class ApiError extends Error {
+  constructor(message, status, retryAfter = null) {
+    super(message);
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
+
+async function _handleResponse(res) {
+  if (res.ok) return res.json();
+  const retryAfter = res.headers.get('Retry-After');
+  const err = await res.json().catch(() => ({}));
+  throw new ApiError(
+    err.detail || `Request failed (${res.status})`,
+    res.status,
+    retryAfter ? parseInt(retryAfter, 10) : null,
+  );
+}
+
 const api = {
   async login(token, email) {
     const res = await fetch('/chat/login', {
@@ -8,11 +27,7 @@ const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, email }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Login failed');
-    }
-    return res.json();
+    return _handleResponse(res);
   },
 
   async signup(name, email) {
@@ -21,11 +36,7 @@ const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Signup failed');
-    }
-    return res.json();
+    return _handleResponse(res);
   },
 
   async send(message, modelId, history, token) {
@@ -37,11 +48,7 @@ const api = {
       },
       body: JSON.stringify({ message, model_id: modelId, history }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Request failed');
-    }
-    return res.json();
+    return _handleResponse(res);
   },
 
   async feedback(traceId, rating, token, query = '') {
@@ -53,16 +60,20 @@ const api = {
       },
       body: JSON.stringify({ trace_id: traceId, rating, query }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Feedback failed');
-    }
-    return res.json();
+    return _handleResponse(res);
   },
 
   async getModels() {
     const res = await fetch('/chat/models');
-    if (!res.ok) throw new Error('Failed to load models');
+    if (!res.ok) throw new ApiError('Failed to load models', res.status);
     return res.json();
+  },
+
+  async validateToken(token) {
+    const res = await fetch('/chat/validate', {
+      method: 'POST',
+      headers: { 'X-Ghostfolio-Token': token },
+    });
+    return res.ok;
   },
 };

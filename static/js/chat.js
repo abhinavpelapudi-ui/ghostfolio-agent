@@ -11,6 +11,7 @@ const TOOL_ICONS = {
 const chat = {
   history: [],   // [{role, content, tools?, cost?, traceId?}]
   sending: false,
+  _lastFailedMessage: null,
 
   init() {
     const session = auth.getSession();
@@ -59,23 +60,26 @@ const chat = {
     });
   },
 
-  async send() {
+  async send(retryMessage) {
     if (chat.sending) return;
     const input = document.getElementById('chat-input');
-    const message = input.value.trim();
+    const message = retryMessage || input.value.trim();
     if (!message) return;
 
     const session = auth.getSession();
     if (!session) { app.showAuth(); return; }
 
-    input.value = '';
+    if (!retryMessage) input.value = '';
     chat.sending = true;
     document.getElementById('send-btn').disabled = true;
+    chat._lastFailedMessage = null;
 
-    // Show user message
-    chat.history.push({ role: 'user', content: message });
-    chat._saveHistory();
-    chat._renderMessage('user', message);
+    // Show user message (only if not a retry — retry already has the message shown)
+    if (!retryMessage) {
+      chat.history.push({ role: 'user', content: message });
+      chat._saveHistory();
+      chat._renderMessage('user', message);
+    }
 
     // Show typing indicator
     const typing = chat._showTyping();
@@ -95,11 +99,31 @@ const chat = {
       chat._renderAssistant(data.response, data.tools_called, data.cost_usd, data.trace_id, data.skill_used);
     } catch (err) {
       typing.remove();
-      const errMsg = `Sorry, something went wrong: ${err.message}`;
-      chat._renderMessage('assistant', errMsg);
-      if (err.message.includes('401') || err.message.includes('Invalid')) {
+      chat._lastFailedMessage = message;
+
+      if (err.status === 401) {
+        chat._renderError('Your session has expired. Redirecting to login...', false);
         auth.clearSession();
         setTimeout(() => app.showAuth(), 2000);
+      } else if (err.status === 429) {
+        const wait = err.retryAfter || 30;
+        chat._renderError(
+          `Rate limited by the portfolio service. Please wait ${wait} seconds and try again.`,
+          true,
+          message,
+        );
+      } else if (err.status === 502) {
+        chat._renderError(
+          'Cannot connect to the portfolio service. It may be temporarily down.',
+          true,
+          message,
+        );
+      } else {
+        chat._renderError(
+          `Something went wrong: ${err.message}`,
+          true,
+          message,
+        );
       }
     } finally {
       chat.sending = false;
@@ -128,6 +152,25 @@ const chat = {
     const div = document.createElement('div');
     div.className = `message ${role}`;
     div.innerHTML = role === 'user' ? chat._escapeHtml(content) : chat._md(content);
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  },
+
+  _renderError(text, showRetry, retryMsg) {
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'message assistant error-message';
+    div.innerHTML = `<p style="color:#e74c3c">${chat._escapeHtml(text)}</p>`;
+    if (showRetry && retryMsg) {
+      const btn = document.createElement('button');
+      btn.className = 'retry-btn';
+      btn.textContent = 'Retry';
+      btn.addEventListener('click', () => {
+        div.remove();
+        chat.send(retryMsg);
+      });
+      div.appendChild(btn);
+    }
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
   },

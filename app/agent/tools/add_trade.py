@@ -1,4 +1,4 @@
-"""Tool: Add a buy or sell trade to the portfolio."""
+"""Tool: Add a buy or sell trade to the portfolio (two-phase confirmation)."""
 
 import json
 from datetime import datetime, timezone
@@ -18,6 +18,7 @@ async def add_trade(
     date: str = "",
     fee: float = 0,
     data_source: str = "YAHOO",
+    confirmed: bool = False,
 ) -> str:
     """Add a buy or sell trade to the portfolio.
     Args:
@@ -29,8 +30,11 @@ async def add_trade(
         date: Trade date in YYYY-MM-DD format (default: today)
         fee: Transaction fee (default: 0)
         data_source: Data source for the symbol (default: YAHOO)
-    Use when user says they bought or sold a stock, ETF, or crypto.
-    Examples: "I bought 10 shares of AAPL at $230", "Add a purchase of 5 VOO at $520"."""
+        confirmed: MUST be True to execute. First call with False to preview, then True to execute.
+    IMPORTANT: You MUST call this tool TWICE for every trade:
+    1. First call with confirmed=False — returns a preview for the user to approve.
+    2. After the user confirms, call again with confirmed=True to actually execute the trade.
+    NEVER set confirmed=True on the first call. Always show the preview first and ask the user to confirm."""
     try:
         # Validate trade type
         trade_type = trade_type.upper()
@@ -43,7 +47,34 @@ async def add_trade(
         if unit_price <= 0:
             return json.dumps({"error": "unit_price must be greater than 0"})
 
-        # Default to today if no date provided
+        trade_date_display = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        total_cost = quantity * unit_price + fee
+
+        # Phase 1: Preview — do NOT execute, return summary for user confirmation
+        if not confirmed:
+            return json.dumps({
+                "pending_confirmation": True,
+                "preview": {
+                    "type": trade_type,
+                    "symbol": symbol.upper(),
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "total_cost": round(total_cost, 2),
+                    "fee": fee,
+                    "currency": currency.upper(),
+                    "date": trade_date_display,
+                    "data_source": data_source,
+                },
+                "message": (
+                    f"Please confirm this trade:\n"
+                    f"  {trade_type} {quantity} x {symbol.upper()} @ ${unit_price:.2f}\n"
+                    f"  Total: ${total_cost:.2f} (fee: ${fee:.2f})\n"
+                    f"  Date: {trade_date_display}\n\n"
+                    f"Reply 'yes' or 'confirm' to execute this trade."
+                ),
+            }, indent=2)
+
+        # Phase 2: Confirmed — execute the trade
         if not date:
             trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00.000Z")
         else:
@@ -74,7 +105,6 @@ async def add_trade(
 
         result = await get_client().create_order(order)
 
-        total_cost = quantity * unit_price + fee
         return json.dumps({
             "success": True,
             "trade": {
@@ -86,7 +116,7 @@ async def add_trade(
                 "total_cost": round(total_cost, 2),
                 "fee": fee,
                 "currency": currency.upper(),
-                "date": date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "date": trade_date_display,
                 "account": accounts[0].get("name", ""),
             },
             "message": (

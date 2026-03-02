@@ -1,12 +1,20 @@
 /**
- * Main entry point — view switching and initialization.
+ * Main entry point — view switching, token validation on load.
  */
 const app = {
-  init() {
+  async init() {
     auth.init();
     const session = auth.getSession();
     if (session && session.token) {
-      app.showChat();
+      // Validate the stored token before showing chat
+      const valid = await api.validateToken(session.token);
+      if (valid) {
+        app.showChat();
+      } else {
+        auth.clearSession();
+        localStorage.removeItem('gf_chat_history');
+        app.showAuth();
+      }
     } else {
       app.showAuth();
     }

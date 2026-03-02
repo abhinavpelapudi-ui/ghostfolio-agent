@@ -1,5 +1,6 @@
 """Async HTTP client for the Ghostfolio REST API."""
 
+import asyncio
 import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -32,39 +33,78 @@ def use_client(client: "GhostfolioClient"):
         _current_client.reset(token)
 
 
+class RateLimitError(Exception):
+    """Raised when the API returns 429 Too Many Requests."""
+
+    def __init__(self, retry_after: int = 30):
+        self.retry_after = retry_after
+        super().__init__(f"Rate limited. Retry after {retry_after}s.")
+
+
 class GhostfolioClient:
+    MAX_RETRIES = 3
+    RETRY_BACKOFF = (1, 2, 4)  # seconds
+
     def __init__(self, access_token: str | None = None, base_url: str | None = None) -> None:
         self._base_url = (base_url or settings.ghostfolio_url).rstrip("/")
         self._access_token = access_token or settings.ghostfolio_access_token
         self._bearer_token: str | None = None
         self._client = httpx.AsyncClient(timeout=30.0)
+        self._auth_lock = asyncio.Lock()
 
     async def _authenticate(self) -> str:
-        resp = await self._client.post(
-            f"{self._base_url}/api/v1/auth/anonymous",
-            json={"accessToken": self._access_token},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self._bearer_token = data["authToken"]
-        logger.info("Authenticated with Ghostfolio")
-        return self._bearer_token
+        async with self._auth_lock:
+            resp = await self._client.post(
+                f"{self._base_url}/api/v1/auth/anonymous",
+                json={"accessToken": self._access_token},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            self._bearer_token = data["authToken"]
+            logger.info("Authenticated with Ghostfolio")
+            return self._bearer_token
 
-    async def _get(self, path: str, params: dict | None = None) -> dict:
+    async def _request(self, method: str, path: str, params: dict | None = None, body: dict | None = None) -> dict:
+        """Unified request method with retry, re-auth, and rate-limit handling."""
         if not self._bearer_token:
             await self._authenticate()
-        headers = {"Authorization": f"Bearer {self._bearer_token}"}
-        resp = await self._client.get(
-            f"{self._base_url}{path}", headers=headers, params=params
-        )
-        if resp.status_code == 401:
-            await self._authenticate()
+
+        for attempt in range(self.MAX_RETRIES):
             headers = {"Authorization": f"Bearer {self._bearer_token}"}
-            resp = await self._client.get(
-                f"{self._base_url}{path}", headers=headers, params=params
-            )
+            if method == "GET":
+                resp = await self._client.get(
+                    f"{self._base_url}{path}", headers=headers, params=params
+                )
+            else:
+                resp = await self._client.post(
+                    f"{self._base_url}{path}", headers=headers, json=body
+                )
+
+            if resp.status_code == 401 and attempt < self.MAX_RETRIES - 1:
+                logger.warning("Got 401, re-authenticating (attempt %d)", attempt + 1)
+                await self._authenticate()
+                continue
+
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", 30))
+                if attempt < self.MAX_RETRIES - 1:
+                    wait = min(retry_after, self.RETRY_BACKOFF[attempt])
+                    logger.warning("Rate limited, waiting %ds (attempt %d)", wait, attempt + 1)
+                    await asyncio.sleep(wait)
+                    continue
+                raise RateLimitError(retry_after)
+
+            resp.raise_for_status()
+            return resp.json()
+
         resp.raise_for_status()
         return resp.json()
+
+    async def _get(self, path: str, params: dict | None = None) -> dict:
+        return await self._request("GET", path, params=params)
+
+    async def _post(self, path: str, body: dict) -> dict:
+        return await self._request("POST", path, body=body)
 
     # ── Portfolio ───────────────────────────────────────────────────
     async def get_portfolio_details(self) -> dict:
@@ -78,22 +118,6 @@ class GhostfolioClient:
 
     async def get_holding_detail(self, data_source: str, symbol: str) -> dict:
         return await self._get(f"/api/v1/portfolio/holding/{data_source}/{symbol}")
-
-    async def _post(self, path: str, body: dict) -> dict:
-        if not self._bearer_token:
-            await self._authenticate()
-        headers = {"Authorization": f"Bearer {self._bearer_token}"}
-        resp = await self._client.post(
-            f"{self._base_url}{path}", headers=headers, json=body
-        )
-        if resp.status_code == 401:
-            await self._authenticate()
-            headers = {"Authorization": f"Bearer {self._bearer_token}"}
-            resp = await self._client.post(
-                f"{self._base_url}{path}", headers=headers, json=body
-            )
-        resp.raise_for_status()
-        return resp.json()
 
     # ── Orders ──────────────────────────────────────────────────────
     async def get_orders(self, **filters) -> dict:
@@ -132,11 +156,7 @@ ghostfolio_client = _default_client
 
 
 async def create_anonymous_user(base_url: str | None = None) -> dict:
-    """Create a new anonymous user on the Ghostfolio instance.
-
-    Calls POST /api/v1/user which returns the new user's access token
-    and auth token. No request body needed.
-    """
+    """Create a new anonymous user on the Ghostfolio instance."""
     url = (base_url or settings.ghostfolio_url).rstrip("/")
     logger.info("Creating new Ghostfolio user at %s/api/v1/user", url)
     async with httpx.AsyncClient(timeout=15.0) as client:

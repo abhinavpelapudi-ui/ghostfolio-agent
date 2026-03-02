@@ -4,6 +4,7 @@ import logging
 import uuid
 from contextvars import ContextVar
 
+import httpx
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -15,7 +16,7 @@ from app.agent.models import DEFAULT_MODEL_ID, ModelSpec, get_model_spec
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.skills import Skill, classify_intent
 from app.agent.tools import ALL_TOOLS
-from app.clients.ghostfolio import GhostfolioClient, _default_client, use_client
+from app.clients.ghostfolio import GhostfolioClient, RateLimitError, _default_client, use_client
 from app.config import settings
 from app.memory.memory_store import memory_store
 from app.tracing.cost_tracker import cost_tracker
@@ -115,6 +116,47 @@ async def run_agent(
                     {"messages": (history or []) + [HumanMessage(content=command)]},
                     config=config,
                 )
+            except RateLimitError as e:
+                logger.warning("Rate limited by Ghostfolio API: %s", e)
+                return {
+                    "response": (
+                        f"The portfolio service is temporarily rate-limited. "
+                        f"Please wait {e.retry_after} seconds and try again."
+                    ),
+                    "trace_id": trace_id,
+                    "tools_called": [],
+                    "cost_usd": 0,
+                    "model": spec.api_model_name,
+                    "skill_used": skill.name,
+                    "error": "rate_limited",
+                    "retry_after": e.retry_after,
+                    "verification": {},
+                }
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                if status == 401:
+                    logger.warning("Authentication failed during agent execution")
+                    return {
+                        "response": "Your session has expired. Please log in again.",
+                        "trace_id": trace_id,
+                        "tools_called": [],
+                        "cost_usd": 0,
+                        "model": spec.api_model_name,
+                        "skill_used": skill.name,
+                        "error": "auth_expired",
+                        "verification": {},
+                    }
+                logger.error("HTTP error during agent execution: %s", e)
+                return {
+                    "response": f"A service error occurred (HTTP {status}). Please try again.",
+                    "trace_id": trace_id,
+                    "tools_called": [],
+                    "cost_usd": 0,
+                    "model": spec.api_model_name,
+                    "skill_used": skill.name,
+                    "error": str(e),
+                    "verification": {},
+                }
             except Exception as e:
                 logger.error("Agent execution failed: %s", e)
                 return {
