@@ -68,6 +68,22 @@ def test_all_skills_have_required_fields():
         assert len(skill.prompt_addon) > 0
 
 
+def test_classify_market_data_price():
+    assert classify_intent("what is the current price of AAPL").name == "market_data"
+
+
+def test_classify_market_data_trend():
+    assert classify_intent("show me the trend for MSFT this week").name == "market_data"
+
+
+def test_classify_market_data_sector():
+    assert classify_intent("show me sectors doing today").name == "market_data"
+
+
+def test_classify_market_data_volume():
+    assert classify_intent("show me the trading volume for TSLA").name == "market_data"
+
+
 def test_trade_has_highest_priority():
     trade = SKILLS["trade_execution"]
     for name, skill in SKILLS.items():

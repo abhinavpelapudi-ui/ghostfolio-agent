@@ -66,7 +66,7 @@ SKILLS: dict[str, Skill] = {
             "risk", "diversification", "diversified", "concentration", "sector",
             "geographic", "exposure", "safe", "volatile", "health",
         ),
-        relevant_tools=("market_sentiment", "portfolio_summary"),
+        relevant_tools=("market_sentiment", "portfolio_summary", "sector_performance"),
         prompt_addon=(
             "Focus on risk analysis and diversification. "
             "Check concentration risk, sector exposure, and geographic distribution. "
@@ -81,11 +81,30 @@ SKILLS: dict[str, Skill] = {
             "search", "lookup", "find", "what is", "ticker", "symbol",
             "dividend", "history", "transactions", "orders",
         ),
-        relevant_tools=("symbol_search", "holding_detail", "dividend_history", "transactions"),
+        relevant_tools=("symbol_search", "holding_detail", "dividend_history", "transactions", "stock_price"),
         prompt_addon=(
             "Focus on data lookup and presentation. "
             "Present transaction history chronologically. "
             "For dividends, show total received and payment frequency."
+        ),
+        priority=1,
+    ),
+    "market_data": Skill(
+        name="market_data",
+        display_name="Market Data",
+        keywords=(
+            "price", "current price", "stock price", "how much is",
+            "trading at", "trend", "trending", "volume", "sectors",
+            "market trend", "how is the market", "doing today",
+            "week trend", "buy volume", "sell volume",
+        ),
+        relevant_tools=("stock_price", "stock_trend", "sector_performance", "stock_volume"),
+        prompt_addon=(
+            "Focus on real-time market data from Yahoo Finance. "
+            "Present prices with currency symbols and change percentages. "
+            "For trends, describe the direction and magnitude clearly. "
+            "For sector performance, highlight best and worst performers. "
+            "Note: volume data shows total trading volume with price direction as a proxy for buy/sell pressure."
         ),
         priority=1,
     ),

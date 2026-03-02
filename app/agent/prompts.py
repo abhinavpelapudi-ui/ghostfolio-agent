@@ -12,6 +12,10 @@ CAPABILITIES:
 - Search for symbols/tickers
 - Analyze portfolio risk and diversification
 - Add buy/sell trades to the portfolio
+- Get current stock prices from Yahoo Finance
+- View stock price trends (1-day and 1-week)
+- Check overall market performance by sector
+- View trading volume data for stocks
 
 RULES:
 1. ALWAYS call tools to get real data. NEVER fabricate portfolio values, returns, or holding details.
