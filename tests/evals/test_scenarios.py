@@ -121,8 +121,16 @@ class TestSingleToolScenarios:
         _setup_mock_client()
         from app.agent.tools.add_trade import add_trade
 
+        # Phase 1: Preview
+        preview = json.loads(await add_trade.ainvoke({
+            "symbol": "TSLA", "quantity": 5, "unit_price": 250, "trade_type": "BUY",
+        }))
+        assert preview["pending_confirmation"] is True
+
+        # Phase 2: Execute
         result = json.loads(await add_trade.ainvoke({
             "symbol": "TSLA", "quantity": 5, "unit_price": 250, "trade_type": "BUY",
+            "confirmed": True,
         }))
         assert result["success"] is True
         assert result["trade"]["type"] == "BUY"
@@ -131,8 +139,16 @@ class TestSingleToolScenarios:
         _setup_mock_client()
         from app.agent.tools.add_trade import add_trade
 
+        # Phase 1: Preview
+        preview = json.loads(await add_trade.ainvoke({
+            "symbol": "AAPL", "quantity": 10, "unit_price": 190, "trade_type": "SELL",
+        }))
+        assert preview["pending_confirmation"] is True
+
+        # Phase 2: Execute
         result = json.loads(await add_trade.ainvoke({
             "symbol": "AAPL", "quantity": 10, "unit_price": 190, "trade_type": "SELL",
+            "confirmed": True,
         }))
         assert result["success"] is True
         assert result["trade"]["type"] == "SELL"
@@ -147,8 +163,16 @@ class TestEdgeCaseScenarios:
         _setup_mock_client()
         from app.agent.tools.add_trade import add_trade
 
+        # Phase 1: Preview
+        preview = json.loads(await add_trade.ainvoke({
+            "symbol": "BTC-USD", "quantity": 0.5, "unit_price": 65000,
+        }))
+        assert preview["pending_confirmation"] is True
+
+        # Phase 2: Execute
         result = json.loads(await add_trade.ainvoke({
             "symbol": "BTC-USD", "quantity": 0.5, "unit_price": 65000,
+            "confirmed": True,
         }))
         assert result["success"] is True
         assert result["trade"]["quantity"] == 0.5

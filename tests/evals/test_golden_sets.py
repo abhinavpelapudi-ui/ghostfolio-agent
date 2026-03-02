@@ -130,11 +130,23 @@ class TestGoldenSetTools:
         _setup_mock_client()
         from app.agent.tools.add_trade import add_trade
 
+        # Phase 1: Preview
+        preview = json.loads(await add_trade.ainvoke({
+            "symbol": "TSLA",
+            "quantity": 5,
+            "unit_price": 250,
+            "trade_type": "BUY",
+        }))
+        assert preview["pending_confirmation"] is True
+        assert preview["preview"]["symbol"] == "TSLA"
+
+        # Phase 2: Confirmed execution
         result = json.loads(await add_trade.ainvoke({
             "symbol": "TSLA",
             "quantity": 5,
             "unit_price": 250,
             "trade_type": "BUY",
+            "confirmed": True,
         }))
         assert result["success"] is True
         assert result["trade"]["symbol"] == "TSLA"
